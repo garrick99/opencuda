@@ -2,8 +2,12 @@
 OpenCUDA IR optimization passes.
 
 Pass 1: Constant folding — evaluate Const op Const at compile time.
-Pass 2: Dead code elimination — remove instructions whose results are unused.
-Pass 3: Common subexpression elimination — reuse identical computations.
+Pass 2: CSE — reuse identical computations within a basic block.
+
+SAFETY RULE: Replacements never cross basic block boundaries.
+This prevents the loop writeback bug where a variable initialized
+in the entry block (float sum = 0) gets replaced by Const(0) in
+the loop body, causing the loop condition to never see updates.
 """
 
 from __future__ import annotations
@@ -14,14 +18,12 @@ from ..ir.types import INT32, UINT32, FLOAT, ScalarTy
 
 
 def _const_val(op: Operand):
-    """Extract numeric value from a Const, or None."""
     if isinstance(op, Const):
         return op.value
     return None
 
 
 def _fold_bin(op: BinOp, a, b, is_float: bool):
-    """Evaluate a binary op on two constants. Returns result or None."""
     if a is None or b is None:
         return None
     try:
@@ -29,7 +31,6 @@ def _fold_bin(op: BinOp, a, b, is_float: bool):
             a, b = float(a), float(b)
         else:
             a, b = int(a), int(b)
-
         if op == BinOp.ADD: return a + b
         if op == BinOp.SUB: return a - b
         if op == BinOp.MUL: return a * b
@@ -48,19 +49,32 @@ def _fold_bin(op: BinOp, a, b, is_float: bool):
 def constant_fold(kernel: Kernel) -> int:
     """
     Fold Const op Const into a single Const.
-    Also folds identity ops: x + 0 → x, x * 1 → x, x * 0 → 0.
-    Returns the number of instructions folded.
+    Also folds safe identity ops: x * 0 → 0.
+
+    SAFETY: Replacements are LOCAL to each basic block. A fold in the
+    entry block does NOT propagate to the loop body. This prevents the
+    loop writeback bug.
+
+    SAFETY: We never put Const results into the cross-instruction
+    replacement map. A folded instruction is simply removed; its
+    Value ceases to exist. Only Value→Value replacements (identity
+    folds where dest and replacement are both registers) propagate.
     """
-    # Map Value.id → replacement Operand
-    replacements: dict[int, Operand] = {}
     folded = 0
 
-    def _resolve(op: Operand) -> Operand:
-        if isinstance(op, Value) and op.id in replacements:
-            return replacements[op.id]
-        return op
-
     for bb in kernel.blocks:
+        # Per-block replacement map — does NOT leak to other blocks
+        replacements: dict[int, Operand] = {}
+
+        def _resolve(op: Operand) -> Operand:
+            if isinstance(op, Value) and op.id in replacements:
+                r = replacements[op.id]
+                # Follow chains but only for Value→Value
+                while isinstance(r, Value) and r.id in replacements:
+                    r = replacements[r.id]
+                return r
+            return op
+
         new_insts = []
         for inst in bb.instructions:
             if isinstance(inst, BinInst):
@@ -73,20 +87,32 @@ def constant_fold(kernel: Kernel) -> int:
                 lv = _const_val(lhs)
                 rv = _const_val(rhs)
 
-                # Full constant fold
+                # Full constant fold (both operands are Const)
                 result = _fold_bin(inst.op, lv, rv, is_float)
                 if result is not None:
-                    replacements[inst.dest.id] = Const(inst.dest.ty, result)
+                    # DON'T put in replacements — the dest Value might be
+                    # read in another block. Just emit a materialization.
+                    # Actually: we CAN fold if we emit the constant inline
+                    # wherever dest is used. But that's complex. Instead:
+                    # emit a simpler instruction (mov-like: add dest, const, 0)
+                    # with the folded value.
+                    if is_float:
+                        inst.lhs = Const(inst.dest.ty, result)
+                        inst.rhs = Const(inst.dest.ty, 0.0)
+                        inst.op = BinOp.ADD
+                    else:
+                        inst.lhs = Const(inst.dest.ty, int(result))
+                        inst.rhs = Const(inst.dest.ty, 0)
+                        inst.op = BinOp.ADD
                     folded += 1
-                    continue  # don't emit this instruction
+                    # Keep the instruction (it's now simpler but still writes dest)
 
-                # Identity folds disabled — not safe with our loop writeback
-                # pattern (add dest, src, 0 for variable update).
-                # Only safe fold: mul by 0 → 0 (result is always 0)
-                if inst.op == BinOp.MUL and (rv == 0 or lv == 0):
-                    replacements[inst.dest.id] = Const(inst.dest.ty, 0)
+                # Safe identity fold: x * 0 → replace instruction with "add dest, 0, 0"
+                elif inst.op == BinOp.MUL and (rv == 0 or lv == 0):
+                    inst.lhs = Const(inst.dest.ty, 0)
+                    inst.rhs = Const(inst.dest.ty, 0)
+                    inst.op = BinOp.ADD
                     folded += 1
-                    continue
 
             elif isinstance(inst, CmpInst):
                 inst.lhs = _resolve(inst.lhs)
@@ -96,8 +122,6 @@ def constant_fold(kernel: Kernel) -> int:
             elif isinstance(inst, StoreInst):
                 inst.addr = _resolve(inst.addr)
                 inst.value = _resolve(inst.value)
-            elif isinstance(inst, CvtInst):
-                inst.src = _resolve(inst.src)
 
             new_insts.append(inst)
         bb.instructions = new_insts
@@ -107,49 +131,41 @@ def constant_fold(kernel: Kernel) -> int:
 
 def cse(kernel: Kernel) -> int:
     """
-    Common Subexpression Elimination.
+    Common Subexpression Elimination (local, per basic block).
 
-    If two BinInst have the same (op, lhs, rhs), reuse the first result
-    for the second. This is local CSE (within each basic block).
+    If two BinInst in the same block have identical (op, lhs, rhs),
+    the second reuses the first result.
 
-    Returns the number of eliminated instructions.
+    SAFETY: per-block only. Never eliminates an instruction whose
+    dest was already written in this block (loop writeback pattern).
     """
     eliminated = 0
 
     for bb in kernel.blocks:
-        # Map (op, lhs_key, rhs_key) → result Value
         seen: dict[tuple, Value] = {}
-        new_insts = []
         replacements: dict[int, Value] = {}
+        written_ids: set[int] = set()
+        new_insts = []
 
         def _key(op: Operand):
             if isinstance(op, Value):
-                # Follow replacement chain
                 v = op
                 while v.id in replacements:
                     v = replacements[v.id]
                 return ('val', v.id)
             if isinstance(op, Const):
-                return ('const', op.ty, op.value)
+                return ('const', op.value)
             return ('other', id(op))
 
-        # Track which Values are written to (dest of any instruction)
-        # to avoid CSE on loop writeback instructions (add dest, src, 0
-        # where dest was previously defined)
-        written_ids: set[int] = set()
-
         for inst in bb.instructions:
-            # Apply replacements to operands
             if isinstance(inst, BinInst):
                 if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
                     inst.lhs = replacements[inst.lhs.id]
                 if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
                     inst.rhs = replacements[inst.rhs.id]
 
-                # Don't CSE if dest was already written in this block
-                # (this is a loop writeback or re-assignment, must execute)
+                # Don't CSE if dest was already written (loop writeback)
                 if inst.dest.id in written_ids:
-                    written_ids.add(inst.dest.id)
                     new_insts.append(inst)
                     continue
 
@@ -158,22 +174,25 @@ def cse(kernel: Kernel) -> int:
                     replacements[inst.dest.id] = seen[key]
                     eliminated += 1
                     continue
+
                 seen[key] = inst.dest
                 written_ids.add(inst.dest.id)
 
-            elif isinstance(inst, CmpInst):
-                if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
-                    inst.lhs = replacements[inst.lhs.id]
-                if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
-                    inst.rhs = replacements[inst.rhs.id]
-            elif isinstance(inst, LoadInst):
-                if isinstance(inst.addr, Value) and inst.addr.id in replacements:
-                    inst.addr = replacements[inst.addr.id]
-            elif isinstance(inst, StoreInst):
-                if isinstance(inst.addr, Value) and inst.addr.id in replacements:
-                    inst.addr = replacements[inst.addr.id]
-                if isinstance(inst.value, Value) and inst.value.id in replacements:
-                    inst.value = replacements[inst.value.id]
+            else:
+                # Apply replacements to other instruction types
+                if isinstance(inst, CmpInst):
+                    if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
+                        inst.lhs = replacements[inst.lhs.id]
+                    if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
+                        inst.rhs = replacements[inst.rhs.id]
+                elif isinstance(inst, LoadInst):
+                    if isinstance(inst.addr, Value) and inst.addr.id in replacements:
+                        inst.addr = replacements[inst.addr.id]
+                elif isinstance(inst, StoreInst):
+                    if isinstance(inst.addr, Value) and inst.addr.id in replacements:
+                        inst.addr = replacements[inst.addr.id]
+                    if isinstance(inst.value, Value) and inst.value.id in replacements:
+                        inst.value = replacements[inst.value.id]
 
             new_insts.append(inst)
         bb.instructions = new_insts
@@ -184,10 +203,11 @@ def cse(kernel: Kernel) -> int:
 def optimize(module: Module, verbose: bool = False) -> Module:
     """Run all optimization passes on the module."""
     for kernel in module.kernels:
-        n_fold = 0 # constant_fold(kernel)
-        # CSE disabled — needs fix for loop writeback patterns
-        # n_cse = cse(kernel)
-        n_cse = 0
+        n_fold = constant_fold(kernel)
+        # CSE disabled — eliminates shared memory loads that look identical
+        # within a block but operate on different data across loop iterations.
+        # Needs loop-aware analysis before it's safe to enable.
+        n_cse = 0  # cse(kernel)
         if verbose:
             total = n_fold + n_cse
             if total > 0:

@@ -31,7 +31,6 @@ entry_1:
     add.s32 %r17, %r7, %r16;
     add.f32 %f18, 0f00000000, 0f00000000;
     div.s32 %r20, %r3, 16;
-    add.s32 %r21, 0, 0;
     bra for_cond_2;
 for_cond_2:
     setp.lt.s32 %p0, %r21, %r20;
@@ -52,13 +51,9 @@ for_body_3:
     add.u64 %rd32, %rd1, %rd66;
     ld.global.f32 %f33, [%rd32];
     st.shared.f32 [%rd26], %f33;
-    mul.lo.s32 %r34, %r9, 16;
-    add.s32 %r35, %r34, %r7;
-    mul.lo.s32 %r36, %r35, 4;
-    cvt.u64.u32 %rd67, %r36;
+    cvt.u64.u32 %rd67, %r25;
     add.u64 %rd37, %rd5, %rd67;
-    mul.lo.s32 %r38, %r21, 16;
-    add.s32 %r39, %r38, %r9;
+    add.s32 %r39, %r28, %r9;
     mul.lo.s32 %r40, %r39, %r3;
     add.s32 %r41, %r40, %r17;
     mul.lo.s32 %r42, %r41, 4;
