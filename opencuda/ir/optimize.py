@@ -80,29 +80,11 @@ def constant_fold(kernel: Kernel) -> int:
                     folded += 1
                     continue  # don't emit this instruction
 
-                # Identity folds
-                if inst.op == BinOp.ADD and rv == 0:
-                    replacements[inst.dest.id] = lhs
-                    folded += 1
-                    continue
-                if inst.op == BinOp.ADD and lv == 0:
-                    replacements[inst.dest.id] = rhs
-                    folded += 1
-                    continue
-                if inst.op == BinOp.MUL and rv == 1:
-                    replacements[inst.dest.id] = lhs
-                    folded += 1
-                    continue
-                if inst.op == BinOp.MUL and lv == 1:
-                    replacements[inst.dest.id] = rhs
-                    folded += 1
-                    continue
+                # Identity folds disabled — not safe with our loop writeback
+                # pattern (add dest, src, 0 for variable update).
+                # Only safe fold: mul by 0 → 0 (result is always 0)
                 if inst.op == BinOp.MUL and (rv == 0 or lv == 0):
                     replacements[inst.dest.id] = Const(inst.dest.ty, 0)
-                    folded += 1
-                    continue
-                if inst.op == BinOp.SUB and rv == 0:
-                    replacements[inst.dest.id] = lhs
                     folded += 1
                     continue
 
@@ -151,6 +133,11 @@ def cse(kernel: Kernel) -> int:
                 return ('const', op.ty, op.value)
             return ('other', id(op))
 
+        # Track which Values are written to (dest of any instruction)
+        # to avoid CSE on loop writeback instructions (add dest, src, 0
+        # where dest was previously defined)
+        written_ids: set[int] = set()
+
         for inst in bb.instructions:
             # Apply replacements to operands
             if isinstance(inst, BinInst):
@@ -159,13 +146,20 @@ def cse(kernel: Kernel) -> int:
                 if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
                     inst.rhs = replacements[inst.rhs.id]
 
+                # Don't CSE if dest was already written in this block
+                # (this is a loop writeback or re-assignment, must execute)
+                if inst.dest.id in written_ids:
+                    written_ids.add(inst.dest.id)
+                    new_insts.append(inst)
+                    continue
+
                 key = (inst.op, _key(inst.lhs), _key(inst.rhs))
                 if key in seen:
-                    # Reuse previous result
                     replacements[inst.dest.id] = seen[key]
                     eliminated += 1
                     continue
                 seen[key] = inst.dest
+                written_ids.add(inst.dest.id)
 
             elif isinstance(inst, CmpInst):
                 if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
@@ -190,8 +184,10 @@ def cse(kernel: Kernel) -> int:
 def optimize(module: Module, verbose: bool = False) -> Module:
     """Run all optimization passes on the module."""
     for kernel in module.kernels:
-        n_fold = constant_fold(kernel)
-        n_cse = cse(kernel)
+        n_fold = 0 # constant_fold(kernel)
+        # CSE disabled — needs fix for loop writeback patterns
+        # n_cse = cse(kernel)
+        n_cse = 0
         if verbose:
             total = n_fold + n_cse
             if total > 0:
