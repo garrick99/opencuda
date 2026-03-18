@@ -95,6 +95,7 @@ _KEYWORDS = {
     '__global__': TokKind.KW_GLOBAL,
     '__shared__': TokKind.KW_SHARED,
     '__device__': TokKind.KW_DEVICE,
+    '__forceinline__': TokKind.KW_DEVICE,  # treat same as __device__
     'void': TokKind.KW_VOID,
     'int': TokKind.KW_INT,
     'unsigned': TokKind.KW_UNSIGNED,

@@ -451,6 +451,39 @@ class Parser:
                         self._emit(CallInst(dest, name, args))
                         return dest
                     return Const(INT32, 0)
+                elif hasattr(self, '_device_funcs') and name in self._device_funcs:
+                    # Inline __device__ function: bind args, replay body
+                    dfunc = self._device_funcs[name]
+                    saved_vars = dict(self._variables)
+                    saved_pos = self._pos
+
+                    # Bind arguments to parameters
+                    for (pname, pty), arg in zip(dfunc['params'], args):
+                        self._variables[pname] = arg
+
+                    # Parse body — stop at 'return' and capture the expr
+                    self._pos = dfunc['body_start']
+                    self._expect(TokKind.LBRACE)
+                    result = Const(dfunc['ret_ty'], 0)
+                    while not self._at(TokKind.RBRACE):
+                        if self._match(TokKind.KW_RETURN):
+                            if not self._at(TokKind.SEMI):
+                                result = self._parse_expr()
+                            self._match(TokKind.SEMI)
+                            # Skip rest of function
+                            depth = 1
+                            while depth > 0:
+                                if self._peek().kind == TokKind.LBRACE: depth += 1
+                                if self._peek().kind == TokKind.RBRACE: depth -= 1
+                                if depth > 0: self._advance()
+                            break
+                        else:
+                            self._parse_stmt()
+
+                    self._pos = saved_pos
+                    # Restore original variables
+                    self._variables = saved_vars
+                    return result
                 else:
                     dest = self._new_val(name, INT32)
                     self._emit(CallInst(dest, name, args))
@@ -793,17 +826,57 @@ class Parser:
             self._expect(TokKind.SEMI)
             self._typedefs[alias] = ty
 
+    def _parse_device_func(self):
+        """Parse __device__ function and store for inlining."""
+        self._expect(TokKind.KW_DEVICE)
+        ret_ty = self._parse_type_with_ptr()
+        name = self._expect(TokKind.IDENT).value
+
+        self._expect(TokKind.LPAREN)
+        params = []
+        if not self._at(TokKind.RPAREN):
+            while True:
+                pty = self._parse_type_with_ptr()
+                pname = self._expect(TokKind.IDENT).value
+                params.append((pname, pty))
+                if not self._match(TokKind.COMMA):
+                    break
+        self._expect(TokKind.RPAREN)
+
+        # Save token range for the body to replay during inlining
+        body_start = self._pos
+        # Skip the body
+        self._expect(TokKind.LBRACE)
+        depth = 1
+        while depth > 0:
+            if self._peek().kind == TokKind.LBRACE: depth += 1
+            if self._peek().kind == TokKind.RBRACE: depth -= 1
+            self._advance()
+        body_end = self._pos
+
+        self._device_funcs[name] = {
+            'name': name,
+            'ret_ty': ret_ty,
+            'params': params,
+            'body_start': body_start,
+            'body_end': body_end,
+        }
+
     def parse_module(self) -> Module:
         mod = Module()
+        self._device_funcs = {}
+
         while not self._at(TokKind.EOF):
             if self._at(TokKind.KW_GLOBAL):
                 mod.kernels.append(self._parse_kernel())
+            elif self._at(TokKind.KW_DEVICE):
+                self._parse_device_func()
             elif self._at(TokKind.KW_STRUCT):
                 self._parse_struct_def()
             elif self._at(TokKind.KW_TYPEDEF):
                 self._parse_typedef()
             else:
-                self._advance()  # skip non-kernel top-level
+                self._advance()
         return mod
 
 
