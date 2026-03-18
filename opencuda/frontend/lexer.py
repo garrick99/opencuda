@@ -32,6 +32,8 @@ class TokKind(Enum):
     KW_FOR      = auto()
     KW_WHILE    = auto()
     KW_RETURN   = auto()
+    KW_STRUCT   = auto()
+    KW_TYPEDEF  = auto()
 
     # Operators
     PLUS     = auto()
@@ -104,6 +106,8 @@ _KEYWORDS = {
     'for': TokKind.KW_FOR,
     'while': TokKind.KW_WHILE,
     'return': TokKind.KW_RETURN,
+    'struct': TokKind.KW_STRUCT,
+    'typedef': TokKind.KW_TYPEDEF,
 }
 
 _TOKEN_RE = re.compile(r"""

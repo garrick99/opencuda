@@ -1,0 +1,50 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry dot_product(
+    .param .u64 out, .param .u64 a, .param .u64 b, .param .s32 n)
+{
+    .reg .f32 %f<28>;
+    .reg .b32 %r<25>;
+    .reg .b64 %rd<33>;
+    .reg .pred %p<16>;
+
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [a];
+    ld.param.u64 %rd2, [b];
+    ld.param.s32 %r3, [n];
+    mov.u32 %r5, %tid.x;
+    setp.lt.s32 %p6, %r5, %r3;
+    @%p6 bra if_true;
+    bra if_false;
+if_true:
+    mul.lo.s32 %r7, %r5, 4;
+    cvt.u64.u32 %rd28, %r7;
+    add.u64 %rd8, %rd0, %rd28;
+    mul.lo.s32 %r9, %r5, 8;
+    cvt.u64.u32 %rd29, %r9;
+    add.u64 %rd10, %rd1, %rd29;
+    ld.global.u32 %r11, [%rd10];
+    mul.lo.s32 %r13, %r5, 8;
+    cvt.u64.u32 %rd30, %r13;
+    add.u64 %rd14, %rd2, %rd30;
+    ld.global.u32 %r15, [%rd14];
+    mul.f32 %f17, %f12, %f16;
+    mul.lo.s32 %r18, %r5, 8;
+    cvt.u64.u32 %rd31, %r18;
+    add.u64 %rd19, %rd1, %rd31;
+    ld.global.u32 %r20, [%rd19];
+    mul.lo.s32 %r22, %r5, 8;
+    cvt.u64.u32 %rd32, %r22;
+    add.u64 %rd23, %rd2, %rd32;
+    ld.global.u32 %r24, [%rd23];
+    mul.f32 %f26, %f21, %f25;
+    add.f32 %f27, %f17, %f26;
+    st.global.f32 [%rd8], %f27;
+    bra if_merge;
+if_false:
+    bra if_merge;
+if_merge:
+    ret;
+}

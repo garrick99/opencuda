@@ -96,3 +96,41 @@ UINT64 = ScalarTy(ScalarType.UINT64)
 FLOAT  = ScalarTy(ScalarType.FLOAT)
 DOUBLE = ScalarTy(ScalarType.DOUBLE)
 HALF   = ScalarTy(ScalarType.HALF)
+
+
+@dataclass(frozen=True)
+class StructTy(Type):
+    """A struct type with named fields."""
+    name: str
+    fields: tuple  # tuple of (field_name, Type) pairs
+
+    @property
+    def size(self) -> int:
+        total = 0
+        for _, fty in self.fields:
+            # Align field to its natural alignment
+            align = fty.size if hasattr(fty, 'size') else 4
+            if align > 0:
+                r = total % align
+                if r: total += align - r
+            total += fty.size
+        return total
+
+    def field_offset(self, field_name: str) -> int:
+        """Byte offset of a named field."""
+        offset = 0
+        for fname, fty in self.fields:
+            align = fty.size if hasattr(fty, 'size') else 4
+            if align > 0:
+                r = offset % align
+                if r: offset += align - r
+            if fname == field_name:
+                return offset
+            offset += fty.size
+        raise KeyError(f"No field '{field_name}' in struct '{self.name}'")
+
+    def field_type(self, field_name: str) -> Type:
+        for fname, fty in self.fields:
+            if fname == field_name:
+                return fty
+        raise KeyError(f"No field '{field_name}' in struct '{self.name}'")

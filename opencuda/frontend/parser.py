@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .lexer import Token, TokKind, lex
-from ..ir.types import (Type, ScalarTy, PtrTy, AddrSpace, ScalarType,
+from ..ir.types import (Type, ScalarTy, PtrTy, AddrSpace, ScalarType, StructTy,
                          INT32, UINT32, FLOAT, VOID, INT64, UINT64, DOUBLE)
 from ..ir.nodes import (Module, Kernel, KernelParam, BasicBlock,
                          Value, Const, Operand,
@@ -33,8 +33,10 @@ class Parser:
         self._pos = 0
         self._kernel: Optional[Kernel] = None
         self._cur_block: Optional[BasicBlock] = None
-        self._variables: dict[str, Value] = {}  # name → SSA value (pointer to stack slot or register)
+        self._variables: dict[str, Value] = {}
         self._block_count = 0
+        self._struct_types: dict[str, StructTy] = {}  # struct name → StructTy
+        self._typedefs: dict[str, Type] = {}  # typedef name → Type
 
     # -- Token helpers -------------------------------------------------------
 
@@ -107,6 +109,19 @@ class Parser:
             if self._match(TokKind.KW_LONG):
                 return INT64
             return INT32  # treat 'long' as int32 for simplicity
+
+        # Struct type
+        if tok.kind == TokKind.KW_STRUCT:
+            self._advance()
+            sname = self._expect(TokKind.IDENT).value
+            if sname in self._struct_types:
+                return self._struct_types[sname]
+            raise ParseError(f"Line {tok.line}: undefined struct '{sname}'")
+
+        # Typedef'd type
+        if tok.kind == TokKind.IDENT and tok.value in self._typedefs:
+            self._advance()
+            return self._typedefs[tok.value]
 
         raise ParseError(f"Line {tok.line}: expected type, got '{tok.value}'")
 
@@ -286,12 +301,35 @@ class Parser:
                     self._emit(LoadInst(dest, addr))
                     lhs = dest
             elif self._match(TokKind.DOT):
-                # Member access: threadIdx.x, blockIdx.y, etc.
                 member = self._expect(TokKind.IDENT).value
+                # Built-in: threadIdx.x, blockIdx.y, etc.
                 if isinstance(lhs, Value) and lhs.name in ('threadIdx', 'blockIdx', 'blockDim'):
                     builtin = f"{lhs.name}.{member}"
                     dest = self._new_val(builtin.replace('.', '_'), INT32)
                     self._emit(CallInst(dest, builtin))
+                    lhs = dest
+                # Struct member access
+                elif isinstance(lhs, Value) and isinstance(lhs.ty, StructTy):
+                    sty = lhs.ty
+                    field_off = sty.field_offset(member)
+                    field_ty = sty.field_type(member)
+                    # Compute address: &lhs + field_offset
+                    # For now, emit as a load from a computed offset
+                    # (this assumes lhs is a pointer to the struct)
+                    dest = self._new_val(f"{lhs.name}_{member}", field_ty)
+                    # TODO: proper struct field access via pointer arithmetic
+                    lhs = dest
+                elif isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy) and isinstance(lhs.ty.pointee, StructTy):
+                    sty = lhs.ty.pointee
+                    field_off = sty.field_offset(member)
+                    field_ty = sty.field_type(member)
+                    # ptr->field: compute address and load
+                    offset_val = self._new_val("foff", INT32)
+                    self._emit(BinInst(offset_val, BinOp.ADD, lhs, Const(INT32, field_off)))
+                    addr = self._new_val("faddr", PtrTy(field_ty, lhs.ty.addr_space))
+                    self._emit(BinInst(addr, BinOp.ADD, lhs, Const(INT32, field_off)))
+                    dest = self._new_val(f"{member}", field_ty)
+                    self._emit(LoadInst(dest, addr))
                     lhs = dest
             else:
                 break
@@ -626,11 +664,46 @@ class Parser:
 
         return self._kernel
 
+    def _parse_struct_def(self):
+        """Parse: struct Name { type field; ... };"""
+        self._expect(TokKind.KW_STRUCT)
+        name = self._expect(TokKind.IDENT).value
+        self._expect(TokKind.LBRACE)
+        fields = []
+        while not self._at(TokKind.RBRACE):
+            fty = self._parse_type_with_ptr()
+            fname = self._expect(TokKind.IDENT).value
+            self._expect(TokKind.SEMI)
+            fields.append((fname, fty))
+        self._expect(TokKind.RBRACE)
+        self._expect(TokKind.SEMI)
+        sty = StructTy(name, tuple(fields))
+        self._struct_types[name] = sty
+        return sty
+
+    def _parse_typedef(self):
+        """Parse: typedef struct Name Name;  or  typedef type name;"""
+        self._expect(TokKind.KW_TYPEDEF)
+        if self._at(TokKind.KW_STRUCT):
+            sty = self._parse_struct_def()
+            # typedef struct Foo Foo; — the name after } is the typedef alias
+            # But we already consumed ;. Check if there's another ident.
+            self._typedefs[sty.name] = sty
+        else:
+            ty = self._parse_type_with_ptr()
+            alias = self._expect(TokKind.IDENT).value
+            self._expect(TokKind.SEMI)
+            self._typedefs[alias] = ty
+
     def parse_module(self) -> Module:
         mod = Module()
         while not self._at(TokKind.EOF):
             if self._at(TokKind.KW_GLOBAL):
                 mod.kernels.append(self._parse_kernel())
+            elif self._at(TokKind.KW_STRUCT):
+                self._parse_struct_def()
+            elif self._at(TokKind.KW_TYPEDEF):
+                self._parse_typedef()
             else:
                 self._advance()  # skip non-kernel top-level
         return mod
