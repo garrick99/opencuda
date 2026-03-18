@@ -335,7 +335,7 @@ class Parser:
                     # addr = base + index * elem_size
                     if elem_size != 1:
                         scaled = self._new_val("scale", INT32)
-                        self._emit(BinInst(scaled, BinOp.MUL, index, Const(INT32, elem_size)))
+                        self._emit(BinInst(scaled, BinOp.MUL, index, Const(index.ty if isinstance(index, Value) else INT32, elem_size)))
                         index = scaled
                     addr = self._new_val("addr", lhs.ty)
                     self._emit(BinInst(addr, BinOp.ADD, lhs, index))
@@ -661,7 +661,7 @@ class Parser:
                         elem_size = var.ty.pointee.size
                         if elem_size != 1:
                             scaled = self._new_val("scale", INT32)
-                            self._emit(BinInst(scaled, BinOp.MUL, index, Const(INT32, elem_size)))
+                            self._emit(BinInst(scaled, BinOp.MUL, index, Const(index.ty if isinstance(index, Value) else INT32, elem_size)))
                             index = scaled
                         addr = self._new_val("addr", var.ty)
                         self._emit(BinInst(addr, BinOp.ADD, var, index))

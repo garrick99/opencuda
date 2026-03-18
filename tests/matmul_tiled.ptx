@@ -48,10 +48,7 @@ for_body_3:
     add.u64 %rd32, %rd1, %rd66;
     ld.global.f32 %f33, [%rd32];
     st.shared.f32 [%rd26], %f33;
-    mul.lo.s32 %r34, %r9, 16;
-    add.s32 %r35, %r34, %r7;
-    mul.lo.s32 %r36, %r35, 4;
-    cvt.u64.u32 %rd67, %r36;
+    cvt.u64.u32 %rd67, %r25;
     add.u64 %rd37, %rd5, %rd67;
     mul.lo.s32 %r40, %r9, %r3;
     add.s32 %r41, %r40, %r17;

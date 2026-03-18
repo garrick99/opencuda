@@ -1,0 +1,48 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry uint_math(
+    .param .u64 out, .param .u64 a, .param .u64 b, .param .u32 n)
+{
+    .reg .b32 %r<31>;
+    .reg .b64 %rd<34>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [a];
+    ld.param.u64 %rd2, [b];
+    ld.param.u32 %r3, [n];
+    mov.u32 %r5, %tid.x;
+    setp.lt.s32 %p0, %r5, %r3;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    mul.lo.s32 %r8, %r5, 4;
+    cvt.u64.u32 %rd31, %r8;
+    add.u64 %rd9, %rd1, %rd31;
+    ld.global.u32 %r10, [%rd9];
+    mul.lo.s32 %r12, %r5, 4;
+    cvt.u64.u32 %rd32, %r12;
+    add.u64 %rd13, %rd2, %rd32;
+    ld.global.u32 %r14, [%rd13];
+    add.u32 %r16, %r10, %r14;
+    sub.u32 %r18, %r10, %r14;
+    mul.lo.u32 %r20, %r10, %r14;
+    shr.b32 %r22, %r10, 16;
+    and.b32 %r24, %r10, 255;
+    mul.lo.s32 %r25, %r5, 4;
+    cvt.u64.u32 %rd33, %r25;
+    add.u64 %rd26, %rd0, %rd33;
+    add.u32 %r27, %r16, %r18;
+    add.u32 %r28, %r27, %r20;
+    add.u32 %r29, %r28, %r22;
+    add.u32 %r30, %r29, %r24;
+    st.global.u32 [%rd26], %r30;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

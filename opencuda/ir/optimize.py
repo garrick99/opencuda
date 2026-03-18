@@ -123,10 +123,80 @@ def constant_fold(kernel: Kernel) -> int:
     return folded
 
 
+def cse(kernel: Kernel) -> int:
+    """
+    Common Subexpression Elimination.
+
+    If two BinInst have the same (op, lhs, rhs), reuse the first result
+    for the second. This is local CSE (within each basic block).
+
+    Returns the number of eliminated instructions.
+    """
+    eliminated = 0
+
+    for bb in kernel.blocks:
+        # Map (op, lhs_key, rhs_key) → result Value
+        seen: dict[tuple, Value] = {}
+        new_insts = []
+        replacements: dict[int, Value] = {}
+
+        def _key(op: Operand):
+            if isinstance(op, Value):
+                # Follow replacement chain
+                v = op
+                while v.id in replacements:
+                    v = replacements[v.id]
+                return ('val', v.id)
+            if isinstance(op, Const):
+                return ('const', op.ty, op.value)
+            return ('other', id(op))
+
+        for inst in bb.instructions:
+            # Apply replacements to operands
+            if isinstance(inst, BinInst):
+                if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
+                    inst.lhs = replacements[inst.lhs.id]
+                if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
+                    inst.rhs = replacements[inst.rhs.id]
+
+                key = (inst.op, _key(inst.lhs), _key(inst.rhs))
+                if key in seen:
+                    # Reuse previous result
+                    replacements[inst.dest.id] = seen[key]
+                    eliminated += 1
+                    continue
+                seen[key] = inst.dest
+
+            elif isinstance(inst, CmpInst):
+                if isinstance(inst.lhs, Value) and inst.lhs.id in replacements:
+                    inst.lhs = replacements[inst.lhs.id]
+                if isinstance(inst.rhs, Value) and inst.rhs.id in replacements:
+                    inst.rhs = replacements[inst.rhs.id]
+            elif isinstance(inst, LoadInst):
+                if isinstance(inst.addr, Value) and inst.addr.id in replacements:
+                    inst.addr = replacements[inst.addr.id]
+            elif isinstance(inst, StoreInst):
+                if isinstance(inst.addr, Value) and inst.addr.id in replacements:
+                    inst.addr = replacements[inst.addr.id]
+                if isinstance(inst.value, Value) and inst.value.id in replacements:
+                    inst.value = replacements[inst.value.id]
+
+            new_insts.append(inst)
+        bb.instructions = new_insts
+
+    return eliminated
+
+
 def optimize(module: Module, verbose: bool = False) -> Module:
     """Run all optimization passes on the module."""
     for kernel in module.kernels:
-        n = constant_fold(kernel)
-        if verbose and n > 0:
-            print(f"[opt] {kernel.name}: folded {n} constant expressions")
+        n_fold = constant_fold(kernel)
+        n_cse = cse(kernel)
+        if verbose:
+            total = n_fold + n_cse
+            if total > 0:
+                parts = []
+                if n_fold: parts.append(f"{n_fold} constants folded")
+                if n_cse: parts.append(f"{n_cse} CSE eliminated")
+                print(f"[opt] {kernel.name}: {', '.join(parts)}")
     return module
