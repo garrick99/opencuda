@@ -1,0 +1,80 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry matmul(
+    .param .u64 C, .param .u64 A, .param .u64 B, .param .s32 N)
+{
+    .reg .f32 %f<33>;
+    .reg .b32 %r<37>;
+    .reg .b64 %rd<41>;
+    .reg .pred %p<3>;
+
+entry_1:
+    ld.param.u64 %rd0, [C];
+    ld.param.u64 %rd1, [A];
+    ld.param.u64 %rd2, [B];
+    ld.param.s32 %r3, [N];
+    mov.u32 %r5, %tid.y;
+    mov.u32 %r6, %ctaid.y;
+    mov.u32 %r7, %ntid.y;
+    mul.lo.s32 %r8, %r6, %r7;
+    add.s32 %r9, %r5, %r8;
+    mov.u32 %r11, %tid.x;
+    mov.u32 %r12, %ctaid.x;
+    mov.u32 %r13, %ntid.x;
+    mul.lo.s32 %r14, %r12, %r13;
+    add.s32 %r15, %r11, %r14;
+    setp.lt.s32 %p0, %r9, %r3;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    setp.lt.s32 %p1, %r15, %r3;
+    @%p1 bra if_true_5;
+    bra if_false_6;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+if_true_5:
+    add.f32 %f18, 0f00000000, 0f00000000;
+    add.s32 %r19, 0, 0;
+    bra for_cond_8;
+if_false_6:
+    bra if_merge_7;
+if_merge_7:
+    bra if_merge_4;
+for_cond_8:
+    setp.lt.s32 %p2, %r19, %r3;
+    @%p2 bra for_body_9;
+    bra for_exit_11;
+for_body_9:
+    mul.lo.s32 %r21, %r9, %r3;
+    add.s32 %r22, %r21, %r19;
+    mul.lo.s32 %r23, %r22, 4;
+    cvt.u64.u32 %rd38, %r23;
+    add.u64 %rd24, %rd1, %rd38;
+    ld.global.f32 %f25, [%rd24];
+    mul.lo.s32 %r26, %r19, %r3;
+    add.s32 %r27, %r26, %r15;
+    mul.lo.s32 %r28, %r27, 4;
+    cvt.u64.u32 %rd39, %r28;
+    add.u64 %rd29, %rd2, %rd39;
+    ld.global.f32 %f30, [%rd29];
+    mul.f32 %f31, %f25, %f30;
+    add.f32 %f32, %f18, %f31;
+    bra for_inc_10;
+for_inc_10:
+    add.s32 %r33, %r19, 1;
+    add.f32 %f18, %f32, 0f00000000;
+    add.s32 %r19, %r33, 0;
+    bra for_cond_8;
+for_exit_11:
+    mul.lo.s32 %r34, %r9, %r3;
+    add.s32 %r35, %r34, %r15;
+    mul.lo.s32 %r36, %r35, 4;
+    cvt.u64.u32 %rd40, %r36;
+    add.u64 %rd37, %rd0, %rd40;
+    st.global.f32 [%rd37], %f18;
+    bra if_merge_7;
+}

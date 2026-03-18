@@ -1,0 +1,87 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry block_reduce(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<36>;
+    .reg .b32 %r<34>;
+    .reg .b64 %rd<43>;
+    .reg .pred %p<4>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r5, %tid.x;
+    mov.u32 %r7, %tid.x;
+    mov.u32 %r8, %ctaid.x;
+    mov.u32 %r9, %ntid.x;
+    mul.lo.s32 %r10, %r8, %r9;
+    add.s32 %r11, %r7, %r10;
+    setp.lt.s32 %p0, %r11, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    mul.lo.s32 %r13, %r5, 4;
+    cvt.u64.u32 %rd36, %r13;
+    add.u64 %rd14, %rd3, %rd36;
+    mul.lo.s32 %r15, %r11, 4;
+    cvt.u64.u32 %rd37, %r15;
+    add.u64 %rd16, %rd1, %rd37;
+    ld.global.f32 %f17, [%rd16];
+    st.shared.f32 [%rd14], %f17;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    bar.sync 0;
+    add.s32 %r18, 128, 0;
+    bra while_cond_5;
+while_cond_5:
+    setp.gt.s32 %p1, %r18, 0;
+    @%p1 bra while_body_6;
+    bra while_exit_7;
+while_body_6:
+    setp.lt.s32 %p2, %r5, %r18;
+    @%p2 bra if_true_8;
+    bra if_false_9;
+while_exit_7:
+    setp.lt.s32 %p3, %r5, 1;
+    @%p3 bra if_true_11;
+    bra if_false_12;
+if_true_8:
+    mul.lo.s32 %r21, %r5, 4;
+    cvt.u64.u32 %rd38, %r21;
+    add.u64 %rd22, %rd3, %rd38;
+    add.s32 %r23, %r5, %r18;
+    mul.lo.s32 %r24, %r23, 4;
+    cvt.u64.u32 %rd39, %r24;
+    add.u64 %rd25, %rd3, %rd39;
+    ld.shared.f32 %f26, [%rd25];
+    cvt.u64.u32 %rd40, %f26;
+    add.u64 %rd27, %rd22, %rd40;
+    bra if_merge_10;
+if_false_9:
+    bra if_merge_10;
+if_merge_10:
+    bar.sync 0;
+    div.s32 %r28, %r18, 2;
+    bra while_cond_5;
+if_true_11:
+    mov.u32 %r30, %ctaid.x;
+    mul.lo.s32 %r31, %r30, 4;
+    cvt.u64.u32 %rd41, %r31;
+    add.u64 %rd32, %rd0, %rd41;
+    mul.lo.s32 %r33, 0, 4;
+    cvt.u64.u32 %rd42, %r33;
+    add.u64 %rd34, %rd3, %rd42;
+    ld.shared.f32 %f35, [%rd34];
+    st.global.f32 [%rd32], %f35;
+    bra if_merge_13;
+if_false_12:
+    bra if_merge_13;
+if_merge_13:
+    ret;
+}

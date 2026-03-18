@@ -64,10 +64,9 @@ class Parser:
 
     # -- IR helpers ----------------------------------------------------------
 
-    def _new_block(self, label: str = None) -> BasicBlock:
-        if label is None:
-            self._block_count += 1
-            label = f"BB{self._block_count}"
+    def _new_block(self, prefix: str = "BB") -> BasicBlock:
+        self._block_count += 1
+        label = f"{prefix}_{self._block_count}"
         bb = BasicBlock(label=label)
         self._kernel.blocks.append(bb)
         return bb
@@ -172,16 +171,43 @@ class Parser:
         return lhs
 
     def _parse_and_expr(self) -> Operand:
-        lhs = self._parse_cmp_expr()
+        lhs = self._parse_bitor_expr()
         while self._match(TokKind.AND):
-            rhs = self._parse_cmp_expr()
+            rhs = self._parse_bitor_expr()
             dest = self._new_val("and", INT32)
             self._emit(BinInst(dest, BinOp.AND, lhs, rhs))
             lhs = dest
         return lhs
 
+    def _parse_bitor_expr(self) -> Operand:
+        lhs = self._parse_bitxor_expr()
+        while self._match(TokKind.PIPE):
+            rhs = self._parse_bitxor_expr()
+            dest = self._new_val("bitor", self._result_type(lhs, rhs))
+            self._emit(BinInst(dest, BinOp.OR, lhs, rhs))
+            lhs = dest
+        return lhs
+
+    def _parse_bitxor_expr(self) -> Operand:
+        lhs = self._parse_bitand_expr()
+        while self._match(TokKind.CARET):
+            rhs = self._parse_bitand_expr()
+            dest = self._new_val("bitxor", self._result_type(lhs, rhs))
+            self._emit(BinInst(dest, BinOp.XOR, lhs, rhs))
+            lhs = dest
+        return lhs
+
+    def _parse_bitand_expr(self) -> Operand:
+        lhs = self._parse_cmp_expr()
+        while self._match(TokKind.AMP):
+            rhs = self._parse_cmp_expr()
+            dest = self._new_val("bitand", self._result_type(lhs, rhs))
+            self._emit(BinInst(dest, BinOp.AND, lhs, rhs))
+            lhs = dest
+        return lhs
+
     def _parse_cmp_expr(self) -> Operand:
-        lhs = self._parse_add_expr()
+        lhs = self._parse_shift_expr()
         cmp_ops = {
             TokKind.EQ: CmpOp.EQ, TokKind.NE: CmpOp.NE,
             TokKind.LT: CmpOp.LT, TokKind.LE: CmpOp.LE,
@@ -211,6 +237,23 @@ class Parser:
         if (isinstance(a_ty, ScalarTy) and a_ty.size == 8) or (isinstance(b_ty, ScalarTy) and b_ty.size == 8):
             return a_ty if isinstance(a_ty, ScalarTy) and a_ty.size == 8 else b_ty
         return a_ty
+
+    def _parse_shift_expr(self) -> Operand:
+        lhs = self._parse_add_expr()
+        while True:
+            if self._match(TokKind.LSHIFT):
+                rhs = self._parse_add_expr()
+                dest = self._new_val("shl", self._result_type(lhs, rhs))
+                self._emit(BinInst(dest, BinOp.SHL, lhs, rhs))
+                lhs = dest
+            elif self._match(TokKind.RSHIFT):
+                rhs = self._parse_add_expr()
+                dest = self._new_val("shr", self._result_type(lhs, rhs))
+                self._emit(BinInst(dest, BinOp.SHR, lhs, rhs))
+                lhs = dest
+            else:
+                break
+        return lhs
 
     def _parse_add_expr(self) -> Operand:
         lhs = self._parse_mul_expr()
@@ -572,8 +615,9 @@ class Parser:
         if self._match(TokKind.ASSIGN):
             rhs = self._parse_expr()
             if isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy):
-                # lhs is an address — store to it
                 self._emit(StoreInst(addr=lhs, value=rhs))
+            elif isinstance(lhs, Value) and lhs.name in self._variables:
+                self._variables[lhs.name] = rhs
             self._expect(TokKind.SEMI)
             return
         # Compound assignment: +=, -=, *=
@@ -582,8 +626,18 @@ class Parser:
                              (TokKind.STAR_EQ, BinOp.MUL)]:
             if self._match(tok_kind):
                 rhs = self._parse_expr()
-                result = self._new_val("compound", lhs.ty if isinstance(lhs, Value) else INT32)
-                self._emit(BinInst(result, op, lhs, rhs))
+                if isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy):
+                    # Array compound: load current, compute, store back
+                    cur = self._new_val("cur", lhs.ty.pointee)
+                    self._emit(LoadInst(cur, lhs))
+                    result = self._new_val("compound", cur.ty)
+                    self._emit(BinInst(result, op, cur, rhs))
+                    self._emit(StoreInst(addr=lhs, value=result))
+                else:
+                    result = self._new_val("compound", lhs.ty if isinstance(lhs, Value) else INT32)
+                    self._emit(BinInst(result, op, lhs, rhs))
+                    if isinstance(lhs, Value) and lhs.name in self._variables:
+                        self._variables[lhs.name] = result
                 self._expect(TokKind.SEMI)
                 return
         self._expect(TokKind.SEMI)

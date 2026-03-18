@@ -66,6 +66,8 @@ class PTXEmitter:
     def __init__(self):
         self._lines: list[str] = []
         self._reg_counts: dict[str, int] = {}  # prefix → max count
+        self._pred_map: dict[int, int] = {}  # Value.id → predicate register index
+        self._next_pred: int = 0
 
     def _reg(self, v: Value) -> str:
         prefix = _ptx_reg_prefix(v.ty)
@@ -92,6 +94,8 @@ class PTXEmitter:
     def emit_kernel(self, kernel: Kernel) -> str:
         self._lines = []
         self._reg_counts = {}
+        self._pred_map = {}
+        self._next_pred = 0
 
         # First pass: collect all register usage
         body_lines = []
@@ -122,7 +126,8 @@ class PTXEmitter:
                 ptx.append(f'    .reg .f32 %{prefix}<{count}>;')
             else:
                 ptx.append(f'    .reg .b32 %{prefix}<{count}>;')
-        ptx.append(f'    .reg .pred %p<16>;')
+        pred_count = max(self._next_pred, 1)
+        ptx.append(f'    .reg .pred %p<{pred_count}>;')
         ptx.append('')
 
         # Body
@@ -161,6 +166,9 @@ class PTXEmitter:
             # Float mul doesn't need .lo qualifier
             if inst.op == BinOp.MUL and _is_float(ty):
                 ptx_op = 'mul'
+            # Bitwise ops use .b32 type, not .s32/.u32
+            if inst.op in (BinOp.AND, BinOp.OR, BinOp.XOR, BinOp.SHL, BinOp.SHR):
+                ptx_ty = f'b{ty.size * 8}' if isinstance(ty, ScalarTy) else 'b32'
 
             # Pointer arithmetic: use u64 for add/sub
             if _is_ptr(ty) and inst.op in (BinOp.ADD, BinOp.SUB):
@@ -198,10 +206,15 @@ class PTXEmitter:
                 CmpOp.GE: 'ge', CmpOp.EQ: 'eq', CmpOp.NE: 'ne',
             }
             cmp_str = op_map[inst.op]
-            pred = f'%p{inst.dest.id}'
+            # Allocate a predicate register (separate numbering from GPRs)
+            if inst.dest.id not in self._pred_map:
+                self._pred_map[inst.dest.id] = self._next_pred
+                self._next_pred += 1
+            pred_idx = self._pred_map[inst.dest.id]
+            pred = f'%p{pred_idx}'
             self._lines.append(
                 f'    setp.{cmp_str}.{ptx_ty} {pred}, '
-                f'{self._operand(inst.lhs)}, {self._operand(inst.rhs)};')
+                f'{self._operand(inst.lhs, ptx_ty)}, {self._operand(inst.rhs, ptx_ty)};')
 
         elif isinstance(inst, LoadInst):
             ty = inst.dest.ty
@@ -254,7 +267,10 @@ class PTXEmitter:
         elif isinstance(term, BrTerm):
             self._lines.append(f'    bra {term.target};')
         elif isinstance(term, CondBrTerm):
-            pred = f'%p{term.cond.id}' if isinstance(term.cond, Value) else '%p0'
+            if isinstance(term.cond, Value) and term.cond.id in self._pred_map:
+                pred = f'%p{self._pred_map[term.cond.id]}'
+            else:
+                pred = '%p0'
             self._lines.append(f'    @{pred} bra {term.true_bb};')
             self._lines.append(f'    bra {term.false_bb};')
 
