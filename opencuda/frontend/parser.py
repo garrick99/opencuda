@@ -439,6 +439,11 @@ class Parser:
                 if name == '__syncthreads':
                     self._emit(CallInst(None, '__syncthreads', args))
                     return Const(VOID, 0)
+                elif name in ('__shfl_sync', '__shfl_up_sync', '__shfl_down_sync',
+                              '__shfl_xor_sync', '__ballot_sync'):
+                    dest = self._new_val(name.replace('__',''), INT32)
+                    self._emit(CallInst(dest, name, args))
+                    return dest
                 elif name in ('atomicAdd', 'atomicSub', 'atomicMin', 'atomicMax',
                               'atomicAnd', 'atomicOr', 'atomicXor', 'atomicExch',
                               'atomicCAS'):

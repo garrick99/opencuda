@@ -291,6 +291,29 @@ class PTXEmitter:
                 dest = self._reg(inst.dest) if inst.dest else '%r0'
                 self._lines.append(
                     f'    atom.global.{ptx_op}.{val_ty} {dest}, [{addr}], {self._operand(inst.args[1], val_ty)};')
+            elif inst.func in ('__shfl_sync', '__shfl_up_sync', '__shfl_down_sync', '__shfl_xor_sync'):
+                # Warp shuffle intrinsics
+                shfl_map = {
+                    '__shfl_sync': 'idx',
+                    '__shfl_up_sync': 'up',
+                    '__shfl_down_sync': 'down',
+                    '__shfl_xor_sync': 'bfly',
+                }
+                mode = shfl_map[inst.func]
+                mask = self._operand(inst.args[0]) if inst.args else '0xFFFFFFFF'
+                val = self._operand(inst.args[1]) if len(inst.args) > 1 else '%r0'
+                delta = self._operand(inst.args[2]) if len(inst.args) > 2 else '0'
+                dest = self._reg(inst.dest) if inst.dest else '%r0'
+                # PTX: shfl.sync.{mode}.b32 dest, val, delta, 0x1f, mask;
+                # The 0x1f is the "clamp" parameter (warp size - 1)
+                self._lines.append(
+                    f'    shfl.sync.{mode}.b32 {dest}, {val}, {delta}, 31, {mask};')
+            elif inst.func == '__ballot_sync':
+                mask = self._operand(inst.args[0]) if inst.args else '0xFFFFFFFF'
+                pred_val = self._operand(inst.args[1]) if len(inst.args) > 1 else '0'
+                dest = self._reg(inst.dest) if inst.dest else '%r0'
+                self._lines.append(
+                    f'    vote.sync.ballot.b32 {dest}, {pred_val}, {mask};')
             elif inst.func == '__syncthreads':
                 self._lines.append('    bar.sync 0;')
             elif inst.func in ('threadIdx.x', 'threadIdx.y', 'threadIdx.z'):
