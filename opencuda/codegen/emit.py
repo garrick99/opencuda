@@ -270,7 +270,28 @@ class PTXEmitter:
                 f'{self._operand(inst.value, ptx_ty)};')
 
         elif isinstance(inst, CallInst):
-            if inst.func == '__syncthreads':
+            if inst.func.startswith('atomic'):
+                # Atomic operations: atomicAdd(addr, val) → atom.global.add.type
+                atomic_ops = {
+                    'atomicAdd': 'add', 'atomicSub': 'add',  # sub emitted as add with negated val
+                    'atomicMin': 'min', 'atomicMax': 'max',
+                    'atomicAnd': 'and', 'atomicOr': 'or', 'atomicXor': 'xor',
+                    'atomicExch': 'exch', 'atomicCAS': 'cas',
+                }
+                ptx_op = atomic_ops.get(inst.func, 'add')
+                addr = self._operand(inst.args[0]) if inst.args else '%rd0'
+                val = self._operand(inst.args[1]) if len(inst.args) > 1 else '0'
+                # Determine type from the value
+                val_ty = 'u32'
+                if len(inst.args) > 1 and isinstance(inst.args[1], Value):
+                    val_ty = _ptx_type(inst.args[1].ty)
+                elif len(inst.args) > 1 and isinstance(inst.args[1], Const):
+                    if isinstance(inst.args[1].value, float):
+                        val_ty = 'f32'
+                dest = self._reg(inst.dest) if inst.dest else '%r0'
+                self._lines.append(
+                    f'    atom.global.{ptx_op}.{val_ty} {dest}, [{addr}], {self._operand(inst.args[1], val_ty)};')
+            elif inst.func == '__syncthreads':
                 self._lines.append('    bar.sync 0;')
             elif inst.func in ('threadIdx.x', 'threadIdx.y', 'threadIdx.z'):
                 # Special register read

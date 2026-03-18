@@ -439,6 +439,18 @@ class Parser:
                 if name == '__syncthreads':
                     self._emit(CallInst(None, '__syncthreads', args))
                     return Const(VOID, 0)
+                elif name in ('atomicAdd', 'atomicSub', 'atomicMin', 'atomicMax',
+                              'atomicAnd', 'atomicOr', 'atomicXor', 'atomicExch',
+                              'atomicCAS'):
+                    # Atomic operations: atomicAdd(addr, val) → atom.global.add
+                    if len(args) >= 2:
+                        addr = args[0]
+                        val = args[1]
+                        result_ty = val.ty if isinstance(val, Value) else INT32
+                        dest = self._new_val(f"atomic_{name}", result_ty)
+                        self._emit(CallInst(dest, name, args))
+                        return dest
+                    return Const(INT32, 0)
                 else:
                     dest = self._new_val(name, INT32)
                     self._emit(CallInst(dest, name, args))
