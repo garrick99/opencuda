@@ -34,6 +34,9 @@ class TokKind(Enum):
     KW_RETURN   = auto()
     KW_STRUCT   = auto()
     KW_TYPEDEF  = auto()
+    KW_CONST    = auto()
+    KW_BREAK    = auto()
+    KW_CONTINUE = auto()
 
     # Operators
     PLUS     = auto()
@@ -108,6 +111,9 @@ _KEYWORDS = {
     'return': TokKind.KW_RETURN,
     'struct': TokKind.KW_STRUCT,
     'typedef': TokKind.KW_TYPEDEF,
+    'const': TokKind.KW_CONST,
+    'break': TokKind.KW_BREAK,
+    'continue': TokKind.KW_CONTINUE,
 }
 
 _TOKEN_RE = re.compile(r"""
