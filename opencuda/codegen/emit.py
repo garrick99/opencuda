@@ -96,6 +96,20 @@ class PTXEmitter:
         self._reg_counts = {}
         self._pred_map = {}
         self._next_pred = 0
+        self._shared_val_ids: dict[str, list] = {}  # smem_name → [Value, ...]
+
+        # Pre-scan: find Values that are shared memory variables
+        if hasattr(kernel, '_shared_decls'):
+            smem_names = {s[0] for s in kernel._shared_decls}
+            for bb in kernel.blocks:
+                for inst in bb.instructions:
+                    # Find BinInst where lhs or rhs is a shared-memory Value
+                    if hasattr(inst, 'lhs') and isinstance(inst.lhs, Value):
+                        if inst.lhs.name in smem_names:
+                            self._shared_val_ids.setdefault(inst.lhs.name, []).append(inst.lhs)
+                    if hasattr(inst, 'dest') and isinstance(inst.dest, Value):
+                        if inst.dest.name in smem_names:
+                            self._shared_val_ids.setdefault(inst.dest.name, []).append(inst.dest)
 
         # First pass: collect all register usage
         body_lines = []
@@ -118,6 +132,12 @@ class PTXEmitter:
         ptx.append(f'    {params})')
         ptx.append('{')
 
+        # Shared memory declarations
+        if hasattr(kernel, '_shared_decls'):
+            for sname, sty, scount in kernel._shared_decls:
+                ptx_sty = _ptx_type(sty)
+                ptx.append(f'    .shared .{ptx_sty} {sname}[{scount}];')
+
         # Register declarations
         for prefix, count in sorted(self._reg_counts.items()):
             if prefix == 'rd':
@@ -129,6 +149,17 @@ class PTXEmitter:
         pred_count = max(self._next_pred, 1)
         ptx.append(f'    .reg .pred %p<{pred_count}>;')
         ptx.append('')
+
+        # Initialize shared memory base addresses
+        # Insert mov.u64 %rd, smem_name for each shared variable
+        if hasattr(kernel, '_shared_decls'):
+            smem_inits = []
+            for sname, sty, scount in kernel._shared_decls:
+                # Find all Values that reference this shared variable
+                for val in self._shared_val_ids.get(sname, []):
+                    reg = self._reg(val)
+                    smem_inits.append(f'    mov.u64 {reg}, {sname};')
+            body_lines = smem_inits + body_lines
 
         # Body
         ptx.extend(body_lines)
@@ -236,7 +267,7 @@ class PTXEmitter:
                     addr_space = 'shared'
             self._lines.append(
                 f'    st.{addr_space}.{ptx_ty} [{self._operand(inst.addr)}], '
-                f'{self._operand(inst.value)};')
+                f'{self._operand(inst.value, ptx_ty)};')
 
         elif isinstance(inst, CallInst):
             if inst.func == '__syncthreads':
