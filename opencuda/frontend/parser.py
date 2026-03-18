@@ -139,10 +139,29 @@ class Parser:
     def _parse_assign_expr(self) -> Operand:
         lhs = self._parse_or_expr()
         # Ternary: cond ? true_expr : false_expr
-        # Lowered to: if (cond) { dest = true } else { dest = false }
-        # For now, emit as select-like pattern using branches
-        if self._at(TokKind.IDENT) and self._peek().value == '?':
-            pass  # TODO: implement ternary
+        if self._match(TokKind.QUESTION):
+            true_val = self._parse_expr()
+            self._expect(TokKind.COLON)
+            false_val = self._parse_assign_expr()
+            # Lower to: if (cond) { dest = true } else { dest = false }
+            result_ty = true_val.ty if isinstance(true_val, Value) else (
+                false_val.ty if isinstance(false_val, Value) else INT32)
+            dest = self._new_val("ternary", result_ty)
+            true_bb = self._new_block("tern_true")
+            false_bb = self._new_block("tern_false")
+            merge_bb = self._new_block("tern_merge")
+            self._cur_block.terminator = CondBrTerm(lhs, true_bb.label, false_bb.label)
+            self._cur_block = true_bb
+            # Emit: dest = true_val
+            self._emit(BinInst(dest, BinOp.ADD, true_val,
+                               Const(result_ty, 0.0 if (isinstance(result_ty, ScalarTy) and result_ty.is_float) else 0)))
+            true_bb.terminator = BrTerm(merge_bb.label)
+            self._cur_block = false_bb
+            self._emit(BinInst(dest, BinOp.ADD, false_val,
+                               Const(result_ty, 0.0 if (isinstance(result_ty, ScalarTy) and result_ty.is_float) else 0)))
+            false_bb.terminator = BrTerm(merge_bb.label)
+            self._cur_block = merge_bb
+            return dest
         if self._match(TokKind.ASSIGN):
             rhs = self._parse_assign_expr()
             if isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy):
@@ -517,6 +536,11 @@ class Parser:
     def _parse_stmt(self):
         tok = self._peek()
 
+        # const declaration: skip the 'const' keyword and parse as normal
+        if tok.kind == TokKind.KW_CONST:
+            self._advance()
+            tok = self._peek()  # re-read after consuming 'const'
+
         # __shared__ declaration: __shared__ type name[size];
         if tok.kind == TokKind.KW_SHARED:
             self._advance()
@@ -762,6 +786,16 @@ class Parser:
 
     def _parse_kernel(self):
         self._expect(TokKind.KW_GLOBAL)
+        # Skip optional __launch_bounds__(maxThreads, minBlocks)
+        if self._at(TokKind.IDENT) and self._peek().value == '__launch_bounds__':
+            self._advance()
+            self._expect(TokKind.LPAREN)
+            depth = 1
+            while depth > 0:
+                if self._peek().kind == TokKind.LPAREN: depth += 1
+                if self._peek().kind == TokKind.RPAREN: depth -= 1
+                self._advance()
+            # Consumed the closing )
         ret_ty = self._parse_type()  # should be void
         name = self._expect(TokKind.IDENT).value
 

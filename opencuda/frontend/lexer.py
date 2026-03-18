@@ -79,6 +79,8 @@ class TokKind(Enum):
     # Special
     PLUSPLUS  = auto()
     MINUSMINUS = auto()
+    QUESTION = auto()  # ?
+    COLON    = auto()  # :
 
     EOF = auto()
 
@@ -162,6 +164,8 @@ _TOKEN_RE = re.compile(r"""
     (?P<SEMI>           ;                   ) |
     (?P<COMMA>          ,                   ) |
     (?P<DOT>            \.                  ) |
+    (?P<QUESTION>       \?                  ) |
+    (?P<COLON>          :                   ) |
     (?P<WS>             [ \t\r]+            ) |
     (?P<NEWLINE>        \n                  )
 """, re.VERBOSE | re.DOTALL)
@@ -182,6 +186,7 @@ _GROUP_TO_KIND = {
     'LBRACE': TokKind.LBRACE, 'RBRACE': TokKind.RBRACE,
     'LBRACKET': TokKind.LBRACKET, 'RBRACKET': TokKind.RBRACKET,
     'SEMI': TokKind.SEMI, 'COMMA': TokKind.COMMA, 'DOT': TokKind.DOT,
+    'QUESTION': TokKind.QUESTION, 'COLON': TokKind.COLON,
     'ARROW': TokKind.ARROW,
     'PLUSPLUS': TokKind.PLUSPLUS, 'MINUSMINUS': TokKind.MINUSMINUS,
 }
