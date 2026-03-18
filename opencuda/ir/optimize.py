@@ -221,10 +221,7 @@ def optimize(module: Module, verbose: bool = False) -> Module:
     from .unroll import unroll_loops
 
     for kernel in module.kernels:
-        # Loop unrolling disabled — needs loop-carried variable chaining.
-        # The unroller creates new Values per iteration but doesn't connect
-        # the accumulator output of iteration N to the input of iteration N+1.
-        n_unroll = 0  # unroll_loops(kernel, max_unroll=16)
+        n_unroll = unroll_loops(kernel, max_unroll=16)
         n_fold = constant_fold(kernel)
         n_cse = cse(kernel)
         if verbose:
