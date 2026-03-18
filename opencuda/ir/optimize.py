@@ -107,6 +107,19 @@ def constant_fold(kernel: Kernel) -> int:
                     folded += 1
                     # Keep the instruction (it's now simpler but still writes dest)
 
+                # Strength reduction: mul by power of 2 → shift left (integers only)
+                elif not is_float and inst.op == BinOp.MUL and rv is not None and isinstance(rv, int) and rv > 0 and (rv & (rv-1)) == 0:
+                    shift = rv.bit_length() - 1
+                    inst.op = BinOp.SHL
+                    inst.rhs = Const(inst.dest.ty, shift)
+                    folded += 1
+                elif not is_float and inst.op == BinOp.MUL and lv is not None and isinstance(lv, int) and lv > 0 and (lv & (lv-1)) == 0:
+                    shift = lv.bit_length() - 1
+                    inst.op = BinOp.SHL
+                    inst.lhs = inst.rhs
+                    inst.rhs = Const(inst.dest.ty, shift)
+                    folded += 1
+
                 # Safe identity fold: x * 0 → replace instruction with "add dest, 0, 0"
                 elif inst.op == BinOp.MUL and (rv == 0 or lv == 0):
                     inst.lhs = Const(inst.dest.ty, 0)
@@ -205,13 +218,20 @@ def cse(kernel: Kernel) -> int:
 
 def optimize(module: Module, verbose: bool = False) -> Module:
     """Run all optimization passes on the module."""
+    from .unroll import unroll_loops
+
     for kernel in module.kernels:
+        # Loop unrolling disabled — needs loop-carried variable chaining.
+        # The unroller creates new Values per iteration but doesn't connect
+        # the accumulator output of iteration N to the input of iteration N+1.
+        n_unroll = 0  # unroll_loops(kernel, max_unroll=16)
         n_fold = constant_fold(kernel)
         n_cse = cse(kernel)
         if verbose:
-            total = n_fold + n_cse
+            total = n_unroll + n_fold + n_cse
             if total > 0:
                 parts = []
+                if n_unroll: parts.append(f"{n_unroll} loops unrolled")
                 if n_fold: parts.append(f"{n_fold} constants folded")
                 if n_cse: parts.append(f"{n_cse} CSE eliminated")
                 print(f"[opt] {kernel.name}: {', '.join(parts)}")

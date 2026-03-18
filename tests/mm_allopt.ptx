@@ -1,0 +1,160 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry matmul_tiled(
+    .param .u64 C, .param .u64 A, .param .u64 B, .param .s32 N)
+{
+    .shared .f32 As[256];
+    .shared .f32 Bs[256];
+    .reg .f32 %f<270>;
+    .reg .b32 %r<266>;
+    .reg .b64 %rd<280>;
+    .reg .pred %p<1>;
+
+    mov.u64 %rd4, As;
+    mov.u64 %rd4, As;
+    mov.u64 %rd5, Bs;
+    mov.u64 %rd5, Bs;
+entry_1:
+    ld.param.u64 %rd0, [C];
+    ld.param.u64 %rd1, [A];
+    ld.param.u64 %rd2, [B];
+    ld.param.s32 %r3, [N];
+    mov.u32 %r7, %tid.x;
+    mov.u32 %r9, %tid.y;
+    mov.u32 %r11, %ctaid.y;
+    shl.b32 %r12, %r11, 4;
+    add.s32 %r13, %r9, %r12;
+    mov.u32 %r15, %ctaid.x;
+    shl.b32 %r16, %r15, 4;
+    add.s32 %r17, %r7, %r16;
+    add.f32 %f18, 0f00000000, 0f00000000;
+    div.s32 %r20, %r3, 16;
+    add.s32 %r21, 0, 0;
+    bra for_cond_2;
+for_cond_2:
+    setp.lt.s32 %p0, %r21, %r20;
+    @%p0 bra for_body_3;
+    bra for_exit_5;
+for_body_3:
+    shl.b32 %r23, %r9, 4;
+    add.s32 %r24, %r23, %r7;
+    shl.b32 %r25, %r24, 2;
+    cvt.u64.u32 %rd273, %r25;
+    add.u64 %rd26, %rd4, %rd273;
+    mul.lo.s32 %r27, %r13, %r3;
+    shl.b32 %r28, %r21, 4;
+    add.s32 %r29, %r27, %r28;
+    add.s32 %r30, %r29, %r7;
+    shl.b32 %r31, %r30, 2;
+    cvt.u64.u32 %rd274, %r31;
+    add.u64 %rd32, %rd1, %rd274;
+    ld.global.f32 %f33, [%rd32];
+    st.shared.f32 [%rd26], %f33;
+    cvt.u64.u32 %rd275, %r25;
+    add.u64 %rd37, %rd5, %rd275;
+    add.s32 %r39, %r28, %r9;
+    mul.lo.s32 %r40, %r39, %r3;
+    add.s32 %r41, %r40, %r17;
+    shl.b32 %r42, %r41, 2;
+    cvt.u64.u32 %rd276, %r42;
+    add.u64 %rd43, %rd2, %rd276;
+    ld.global.f32 %f44, [%rd43];
+    st.shared.f32 [%rd37], %f44;
+    bar.sync 0;
+    add.s32 %r45, 0, 0;
+    bra for_cond_6;
+for_inc_4:
+    add.s32 %r60, %r21, 1;
+    add.s32 %r21, %r60, 0;
+    bra for_cond_2;
+for_exit_5:
+    mul.lo.s32 %r61, %r13, %r3;
+    add.s32 %r62, %r61, %r17;
+    shl.b32 %r63, %r62, 2;
+    cvt.u64.u32 %rd277, %r63;
+    add.u64 %rd64, %rd0, %rd277;
+    st.global.f32 [%rd64], %f18;
+    ret;
+for_cond_6:
+    shl.b32 %r65, %r9, 4;
+    add.s32 %r66, %r47, 0;
+    shl.b32 %r67, %r48, 2;
+    cvt.u64.u32 %rd278, %r49;
+    add.u64 %rd68, %rd4, %rd278;
+    ld.shared.f32 %f69, [%rd50];
+    add.s32 %r70, 0, 0;
+    add.s32 %r71, %r52, %r7;
+    shl.b32 %r72, %r53, 2;
+    cvt.u64.u32 %rd279, %r54;
+    add.u64 %rd73, %rd5, %rd279;
+    ld.shared.f32 %f74, [%rd55];
+    mul.f32 %f75, %f51, %f56;
+    add.f32 %f76, %f18, %f57;
+    add.f32 %f77, %f58, 0f00000000;
+    add.s32 %r79, %r47, 1;
+    ld.shared.f32 %f82, [%rd50];
+    add.s32 %r83, 16, 0;
+    ld.shared.f32 %f87, [%rd55];
+    add.s32 %r92, %r47, 2;
+    ld.shared.f32 %f95, [%rd50];
+    add.s32 %r96, 32, 0;
+    ld.shared.f32 %f100, [%rd55];
+    add.s32 %r105, %r47, 3;
+    ld.shared.f32 %f108, [%rd50];
+    add.s32 %r109, 48, 0;
+    ld.shared.f32 %f113, [%rd55];
+    add.s32 %r118, %r47, 4;
+    ld.shared.f32 %f121, [%rd50];
+    add.s32 %r122, 64, 0;
+    ld.shared.f32 %f126, [%rd55];
+    add.s32 %r131, %r47, 5;
+    ld.shared.f32 %f134, [%rd50];
+    add.s32 %r135, 80, 0;
+    ld.shared.f32 %f139, [%rd55];
+    add.s32 %r144, %r47, 6;
+    ld.shared.f32 %f147, [%rd50];
+    add.s32 %r148, 96, 0;
+    ld.shared.f32 %f152, [%rd55];
+    add.s32 %r157, %r47, 7;
+    ld.shared.f32 %f160, [%rd50];
+    add.s32 %r161, 112, 0;
+    ld.shared.f32 %f165, [%rd55];
+    add.s32 %r170, %r47, 8;
+    ld.shared.f32 %f173, [%rd50];
+    add.s32 %r174, 128, 0;
+    ld.shared.f32 %f178, [%rd55];
+    add.s32 %r183, %r47, 9;
+    ld.shared.f32 %f186, [%rd50];
+    add.s32 %r187, 144, 0;
+    ld.shared.f32 %f191, [%rd55];
+    add.s32 %r196, %r47, 10;
+    ld.shared.f32 %f199, [%rd50];
+    add.s32 %r200, 160, 0;
+    ld.shared.f32 %f204, [%rd55];
+    add.s32 %r209, %r47, 11;
+    ld.shared.f32 %f212, [%rd50];
+    add.s32 %r213, 176, 0;
+    ld.shared.f32 %f217, [%rd55];
+    add.s32 %r222, %r47, 12;
+    ld.shared.f32 %f225, [%rd50];
+    add.s32 %r226, 192, 0;
+    ld.shared.f32 %f230, [%rd55];
+    add.s32 %r235, %r47, 13;
+    ld.shared.f32 %f238, [%rd50];
+    add.s32 %r239, 208, 0;
+    ld.shared.f32 %f243, [%rd55];
+    add.s32 %r248, %r47, 14;
+    ld.shared.f32 %f251, [%rd50];
+    add.s32 %r252, 224, 0;
+    ld.shared.f32 %f256, [%rd55];
+    add.s32 %r261, %r47, 15;
+    ld.shared.f32 %f264, [%rd50];
+    add.s32 %r265, 240, 0;
+    ld.shared.f32 %f269, [%rd55];
+    bra for_exit_9;
+for_exit_9:
+    bar.sync 0;
+    bra for_inc_4;
+}

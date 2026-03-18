@@ -138,6 +138,11 @@ class Parser:
 
     def _parse_assign_expr(self) -> Operand:
         lhs = self._parse_or_expr()
+        # Ternary: cond ? true_expr : false_expr
+        # Lowered to: if (cond) { dest = true } else { dest = false }
+        # For now, emit as select-like pattern using branches
+        if self._at(TokKind.IDENT) and self._peek().value == '?':
+            pass  # TODO: implement ternary
         if self._match(TokKind.ASSIGN):
             rhs = self._parse_assign_expr()
             if isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy):
@@ -291,7 +296,6 @@ class Parser:
 
     def _parse_unary_expr(self) -> Operand:
         if self._match(TokKind.STAR):
-            # Pointer dereference
             operand = self._parse_unary_expr()
             if isinstance(operand, Value) and isinstance(operand.ty, PtrTy):
                 dest = self._new_val("deref", operand.ty.pointee)
@@ -299,9 +303,37 @@ class Parser:
                 return dest
         if self._match(TokKind.MINUS):
             operand = self._parse_unary_expr()
-            dest = self._new_val("neg", operand.ty if isinstance(operand, Value) else INT32)
-            self._emit(BinInst(dest, BinOp.SUB, Const(INT32, 0), operand))
+            ty = operand.ty if isinstance(operand, Value) else INT32
+            dest = self._new_val("neg", ty)
+            zero = Const(FLOAT, 0.0) if (isinstance(ty, ScalarTy) and ty.is_float) else Const(ty, 0)
+            self._emit(BinInst(dest, BinOp.SUB, zero, operand))
             return dest
+        if self._match(TokKind.TILDE):
+            operand = self._parse_unary_expr()
+            dest = self._new_val("bnot", operand.ty if isinstance(operand, Value) else INT32)
+            self._emit(BinInst(dest, BinOp.XOR, operand, Const(INT32, -1)))
+            return dest
+        if self._match(TokKind.BANG):
+            operand = self._parse_unary_expr()
+            dest = self._new_val("lnot", INT32)
+            self._emit(CmpInst(dest, CmpOp.EQ, operand, Const(INT32, 0)))
+            return dest
+        # Cast: (type)expr
+        if self._at(TokKind.LPAREN):
+            saved = self._pos
+            self._advance()
+            try:
+                cast_ty = self._parse_type()
+                # Check for pointer
+                while self._match(TokKind.STAR):
+                    cast_ty = PtrTy(cast_ty, AddrSpace.GLOBAL)
+                self._expect(TokKind.RPAREN)
+                operand = self._parse_unary_expr()
+                dest = self._new_val("cast", cast_ty)
+                self._emit(CvtInst(dest, operand))
+                return dest
+            except ParseError:
+                self._pos = saved
         return self._parse_postfix_expr()
 
     def _parse_postfix_expr(self) -> Operand:
