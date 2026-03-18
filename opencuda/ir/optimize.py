@@ -169,7 +169,10 @@ def cse(kernel: Kernel) -> int:
                     new_insts.append(inst)
                     continue
 
-                key = (inst.op, _key(inst.lhs), _key(inst.rhs))
+                # Include dest TYPE in key — prevents merging int and float
+                # variables that happen to have the same init value
+                dest_type_key = str(inst.dest.ty)
+                key = (inst.op, _key(inst.lhs), _key(inst.rhs), dest_type_key)
                 if key in seen:
                     replacements[inst.dest.id] = seen[key]
                     eliminated += 1
@@ -204,10 +207,7 @@ def optimize(module: Module, verbose: bool = False) -> Module:
     """Run all optimization passes on the module."""
     for kernel in module.kernels:
         n_fold = constant_fold(kernel)
-        # CSE disabled — eliminates shared memory loads that look identical
-        # within a block but operate on different data across loop iterations.
-        # Needs loop-aware analysis before it's safe to enable.
-        n_cse = 0  # cse(kernel)
+        n_cse = cse(kernel)
         if verbose:
             total = n_fold + n_cse
             if total > 0:
