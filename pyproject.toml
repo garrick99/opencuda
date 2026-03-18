@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencuda"
+version = "0.1.0"
+description = "Open-source CUDA compiler — CUDA-subset C to SM_120 cubin"
+requires-python = ">=3.11"
+dependencies = [
+    "openptxas",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+opencuda = "opencuda.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

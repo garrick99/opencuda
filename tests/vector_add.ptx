@@ -1,0 +1,44 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry vector_add(
+    .param .u64 out, .param .u64 a, .param .u64 b, .param .s32 n)
+{
+    .reg .f32 %f<20>;
+    .reg .b32 %r<17>;
+    .reg .b64 %rd<23>;
+    .reg .pred %p<16>;
+
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [a];
+    ld.param.u64 %rd2, [b];
+    ld.param.s32 %r3, [n];
+    mov.u32 %r5, %tid.x;
+    mov.u32 %r6, %ctaid.x;
+    mov.u32 %r7, %ntid.x;
+    mul.lo.s32 %r8, %r6, %r7;
+    add.s32 %r9, %r5, %r8;
+    setp.lt.s32 %p10, %r9, %r3;
+    @%p10 bra if_true;
+    bra if_false;
+if_true:
+    mul.lo.s32 %r11, %r9, 4;
+    cvt.u64.u32 %rd20, %r11;
+    add.u64 %rd12, %rd0, %rd20;
+    mul.lo.s32 %r13, %r9, 4;
+    cvt.u64.u32 %rd21, %r13;
+    add.u64 %rd14, %rd1, %rd21;
+    ld.global.f32 %f15, [%rd14];
+    mul.lo.s32 %r16, %r9, 4;
+    cvt.u64.u32 %rd22, %r16;
+    add.u64 %rd17, %rd2, %rd22;
+    ld.global.f32 %f18, [%rd17];
+    add.f32 %f19, %f15, %f18;
+    st.global.f32 [%rd12], %f19;
+    bra if_merge;
+if_false:
+    bra if_merge;
+if_merge:
+    ret;
+}
