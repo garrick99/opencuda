@@ -126,12 +126,25 @@ class Parser:
         lhs = self._parse_or_expr()
         if self._match(TokKind.ASSIGN):
             rhs = self._parse_assign_expr()
-            # lhs must be an addressable value — emit store
             if isinstance(lhs, Value) and isinstance(lhs.ty, PtrTy):
                 self._emit(StoreInst(addr=lhs, value=rhs))
                 return rhs
-            # Direct variable assignment
+            # Variable assignment: update the variable binding
+            if isinstance(lhs, Value) and lhs.name in self._variables:
+                self._variables[lhs.name] = rhs
             return rhs
+        # Compound assignment: +=, -=, *=
+        for tok_kind, op in [(TokKind.PLUS_EQ, BinOp.ADD),
+                             (TokKind.MINUS_EQ, BinOp.SUB),
+                             (TokKind.STAR_EQ, BinOp.MUL)]:
+            if self._match(tok_kind):
+                rhs = self._parse_assign_expr()
+                if isinstance(lhs, Value):
+                    new_val = self._new_val(f"{lhs.name}_compound", lhs.ty)
+                    self._emit(BinInst(new_val, op, lhs, rhs))
+                    if lhs.name in self._variables:
+                        self._variables[lhs.name] = new_val
+                    return new_val
         return lhs
 
     def _parse_or_expr(self) -> Operand:
@@ -167,17 +180,34 @@ class Parser:
                 return dest
         return lhs
 
+    def _result_type(self, a: Operand, b: Operand) -> Type:
+        """Determine result type with promotion (float wins over int, wider wins)."""
+        a_ty = a.ty if isinstance(a, Value) else (FLOAT if isinstance(a, Const) and isinstance(a.value, float) else INT32)
+        b_ty = b.ty if isinstance(b, Value) else (FLOAT if isinstance(b, Const) and isinstance(b.value, float) else INT32)
+        # Float promotion
+        if (isinstance(a_ty, ScalarTy) and a_ty.is_float) or (isinstance(b_ty, ScalarTy) and b_ty.is_float):
+            return FLOAT
+        # Pointer arithmetic
+        if isinstance(a_ty, PtrTy):
+            return a_ty
+        if isinstance(b_ty, PtrTy):
+            return b_ty
+        # 64-bit promotion
+        if (isinstance(a_ty, ScalarTy) and a_ty.size == 8) or (isinstance(b_ty, ScalarTy) and b_ty.size == 8):
+            return a_ty if isinstance(a_ty, ScalarTy) and a_ty.size == 8 else b_ty
+        return a_ty
+
     def _parse_add_expr(self) -> Operand:
         lhs = self._parse_mul_expr()
         while True:
             if self._match(TokKind.PLUS):
                 rhs = self._parse_mul_expr()
-                dest = self._new_val("add", lhs.ty if isinstance(lhs, Value) else INT32)
+                dest = self._new_val("add", self._result_type(lhs, rhs))
                 self._emit(BinInst(dest, BinOp.ADD, lhs, rhs))
                 lhs = dest
             elif self._match(TokKind.MINUS):
                 rhs = self._parse_mul_expr()
-                dest = self._new_val("sub", lhs.ty if isinstance(lhs, Value) else INT32)
+                dest = self._new_val("sub", self._result_type(lhs, rhs))
                 self._emit(BinInst(dest, BinOp.SUB, lhs, rhs))
                 lhs = dest
             else:
@@ -189,12 +219,12 @@ class Parser:
         while True:
             if self._match(TokKind.STAR):
                 rhs = self._parse_unary_expr()
-                dest = self._new_val("mul", lhs.ty if isinstance(lhs, Value) else INT32)
+                dest = self._new_val("mul", self._result_type(lhs, rhs))
                 self._emit(BinInst(dest, BinOp.MUL, lhs, rhs))
                 lhs = dest
             elif self._match(TokKind.SLASH):
                 rhs = self._parse_unary_expr()
-                dest = self._new_val("div", lhs.ty if isinstance(lhs, Value) else INT32)
+                dest = self._new_val("div", self._result_type(lhs, rhs))
                 self._emit(BinInst(dest, BinOp.DIV, lhs, rhs))
                 lhs = dest
             else:
@@ -220,6 +250,24 @@ class Parser:
         lhs = self._parse_primary_expr()
 
         while True:
+            # i++ / i--
+            if self._match(TokKind.PLUSPLUS):
+                if isinstance(lhs, Value):
+                    old = lhs
+                    new_val = self._new_val(f"{old.name}_inc", old.ty)
+                    self._emit(BinInst(new_val, BinOp.ADD, old, Const(old.ty, 1)))
+                    self._variables[old.name] = new_val
+                    lhs = old  # post-increment returns old value
+                continue
+            if self._match(TokKind.MINUSMINUS):
+                if isinstance(lhs, Value):
+                    old = lhs
+                    new_val = self._new_val(f"{old.name}_dec", old.ty)
+                    self._emit(BinInst(new_val, BinOp.SUB, old, Const(old.ty, 1)))
+                    self._variables[old.name] = new_val
+                    lhs = old
+                continue
+
             if self._match(TokKind.LBRACKET):
                 # Array indexing: ptr[index]
                 index = self._parse_expr()
@@ -306,6 +354,26 @@ class Parser:
     def _parse_stmt(self):
         tok = self._peek()
 
+        # __shared__ declaration: __shared__ type name[size];
+        if tok.kind == TokKind.KW_SHARED:
+            self._advance()
+            ty = self._parse_type()
+            name = self._expect(TokKind.IDENT).value
+            self._expect(TokKind.LBRACKET)
+            size_tok = self._expect(TokKind.INT_LIT)
+            size = int(size_tok.value)
+            self._expect(TokKind.RBRACKET)
+            self._expect(TokKind.SEMI)
+            # Create a shared-memory pointer variable
+            smem_ty = PtrTy(ScalarTy(ScalarType.FLOAT) if ty == FLOAT else ty, AddrSpace.SHARED)
+            val = self._new_val(name, smem_ty)
+            self._variables[name] = val
+            # Store smem info for codegen (size in bytes)
+            if not hasattr(self._kernel, '_shared_decls'):
+                self._kernel._shared_decls = []
+            self._kernel._shared_decls.append((name, ty, size))
+            return
+
         # Variable declaration: type name [= expr];
         if tok.kind in (TokKind.KW_INT, TokKind.KW_UNSIGNED, TokKind.KW_FLOAT,
                         TokKind.KW_DOUBLE, TokKind.KW_VOID, TokKind.KW_LONG):
@@ -354,47 +422,101 @@ class Parser:
             self._cur_block = merge_bb
             return
 
-        # For loop
+        # For loop — uses mutable variable model
+        # Variables modified in the loop body/increment are written back to their
+        # canonical Value so the condition block always reads the current value.
         if tok.kind == TokKind.KW_FOR:
             self._advance()
             self._expect(TokKind.LPAREN)
-            # Init
-            self._parse_stmt()
-            # Condition
-            cond_bb = self._new_block("for_cond")
-            body_bb = self._new_block("for_body")
-            exit_bb = self._new_block("for_exit")
 
-            self._cur_block.terminator = BrTerm(cond_bb.label)
-            self._cur_block = cond_bb
-            cond = self._parse_expr()
-            self._expect(TokKind.SEMI)
-            # Save increment expression position for later
+            # Snapshot variables before init to track which get modified
+            vars_before = dict(self._variables)
+
+            # Parse init statement
+            self._parse_stmt()
+
+            # Save token positions for condition and increment
+            cond_start = self._pos
+            depth = 0
+            while not (self._peek().kind == TokKind.SEMI and depth == 0):
+                if self._peek().kind == TokKind.LPAREN: depth += 1
+                if self._peek().kind == TokKind.RPAREN: depth -= 1
+                self._advance()
+            self._advance()  # skip ;
+
             inc_start = self._pos
-            # Skip increment for now
             depth = 0
             while not (self._peek().kind == TokKind.RPAREN and depth == 0):
                 if self._peek().kind == TokKind.LPAREN: depth += 1
                 if self._peek().kind == TokKind.RPAREN: depth -= 1
                 self._advance()
             self._expect(TokKind.RPAREN)
+            body_resume = self._pos
 
+            # Snapshot variables after init (these are the "loop variables")
+            loop_vars = dict(self._variables)
+
+            # Build CFG
+            cond_bb = self._new_block("for_cond")
+            body_bb = self._new_block("for_body")
+            inc_bb = self._new_block("for_inc")
+            exit_bb = self._new_block("for_exit")
+
+            self._cur_block.terminator = BrTerm(cond_bb.label)
+
+            # Emit condition — must read current loop variable values
+            self._cur_block = cond_bb
+            self._pos = cond_start
+            cond = self._parse_expr()
             cond_bb.terminator = CondBrTerm(cond, body_bb.label, exit_bb.label)
 
+            # Emit body
+            self._pos = body_resume
             self._cur_block = body_bb
             self._parse_stmt_or_block()
-
-            # Increment
-            inc_bb = self._new_block("for_inc")
             if self._cur_block.terminator is None:
                 self._cur_block.terminator = BrTerm(inc_bb.label)
+
+            # Emit increment
             self._cur_block = inc_bb
-            # Re-parse the increment expression
             saved_pos = self._pos
             self._pos = inc_start
             self._parse_expr()
             self._pos = saved_pos
+
+            # Write back modified variables to their canonical loop-entry Values
+            # so the condition block reads the updated values on the next iteration.
+            for var_name, init_val in loop_vars.items():
+                cur_val = self._variables.get(var_name)
+                if cur_val is not None and cur_val is not init_val and isinstance(cur_val, Value):
+                    # Variable was modified — emit a copy back to the init register
+                    # PTX: mov dest, src (but we emit add dest, src, 0 for simplicity)
+                    self._emit(BinInst(init_val, BinOp.ADD, cur_val, Const(init_val.ty, 0)))
+                    self._variables[var_name] = init_val
+
             inc_bb.terminator = BrTerm(cond_bb.label)
+            self._cur_block = exit_bb
+            return
+
+        # While loop
+        if tok.kind == TokKind.KW_WHILE:
+            self._advance()
+            self._expect(TokKind.LPAREN)
+
+            cond_bb = self._new_block("while_cond")
+            body_bb = self._new_block("while_body")
+            exit_bb = self._new_block("while_exit")
+
+            self._cur_block.terminator = BrTerm(cond_bb.label)
+            self._cur_block = cond_bb
+            cond = self._parse_expr()
+            self._expect(TokKind.RPAREN)
+            cond_bb.terminator = CondBrTerm(cond, body_bb.label, exit_bb.label)
+
+            self._cur_block = body_bb
+            self._parse_stmt_or_block()
+            if self._cur_block.terminator is None:
+                self._cur_block.terminator = BrTerm(cond_bb.label)
 
             self._cur_block = exit_bb
             return

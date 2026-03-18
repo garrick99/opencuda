@@ -1,0 +1,41 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry sum_reduce(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<10>;
+    .reg .b32 %r<12>;
+    .reg .b64 %rd<15>;
+    .reg .pred %p<16>;
+
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    add.f32 %f3, 0f00000000, 0f00000000;
+    add.s32 %r4, 0, 0;
+    bra for_cond;
+for_cond:
+    setp.lt.s32 %p5, %r4, %r2;
+    @%p5 bra for_body;
+    bra for_exit;
+for_body:
+    mul.lo.s32 %r6, %r4, 4;
+    cvt.u64.u32 %rd13, %r6;
+    add.u64 %rd7, %rd1, %rd13;
+    ld.global.f32 %f8, [%rd7];
+    add.f32 %f9, %f3, %f8;
+    bra for_inc;
+for_inc:
+    add.s32 %r10, %r4, 1;
+    add.f32 %f3, %f9, 0f00000000;
+    add.s32 %r4, %r10, 0;
+    bra for_cond;
+for_exit:
+    mul.lo.s32 %r11, 0, 4;
+    cvt.u64.u32 %rd14, %r11;
+    add.u64 %rd12, %rd0, %rd14;
+    st.global.f32 [%rd12], %f3;
+    ret;
+}

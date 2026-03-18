@@ -70,18 +70,19 @@ class PTXEmitter:
     def _reg(self, v: Value) -> str:
         prefix = _ptx_reg_prefix(v.ty)
         name = f'%{prefix}{v.id}'
-        # Track register usage
         self._reg_counts[prefix] = max(self._reg_counts.get(prefix, 0), v.id + 1)
         return name
 
-    def _operand(self, op: Operand) -> str:
+    def _operand(self, op: Operand, force_type: str = None) -> str:
         if isinstance(op, Value):
             return self._reg(op)
         if isinstance(op, Const):
-            if isinstance(op.value, float):
-                # PTX float immediate
-                return f'0f{self._float_hex(op.value)}'
-            return str(op.value)
+            # Determine if we should emit as float or int
+            is_fp = force_type in ('f32', 'f64') if force_type else (
+                isinstance(op.ty, ScalarTy) and op.ty.is_float)
+            if is_fp:
+                return f'0f{self._float_hex(float(op.value))}'
+            return str(int(op.value))
         return str(op)
 
     def _float_hex(self, f: float) -> str:
@@ -179,15 +180,15 @@ class PTXEmitter:
             elif _is_float(ty):
                 self._lines.append(
                     f'    {ptx_op}.f32 {self._reg(inst.dest)}, '
-                    f'{self._operand(inst.lhs)}, {self._operand(inst.rhs)};')
+                    f'{self._operand(inst.lhs, "f32")}, {self._operand(inst.rhs, "f32")};')
             elif _is_64bit(ty):
                 self._lines.append(
                     f'    {ptx_op}.{ptx_ty} {self._reg(inst.dest)}, '
-                    f'{self._operand(inst.lhs)}, {self._operand(inst.rhs)};')
+                    f'{self._operand(inst.lhs, ptx_ty)}, {self._operand(inst.rhs, ptx_ty)};')
             else:
                 self._lines.append(
                     f'    {ptx_op}.{ptx_ty} {self._reg(inst.dest)}, '
-                    f'{self._operand(inst.lhs)}, {self._operand(inst.rhs)};')
+                    f'{self._operand(inst.lhs, ptx_ty)}, {self._operand(inst.rhs, ptx_ty)};')
 
         elif isinstance(inst, CmpInst):
             ty = inst.lhs.ty if isinstance(inst.lhs, Value) else INT32
