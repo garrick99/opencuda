@@ -29,11 +29,19 @@ def main():
     source_path = Path(args.source)
     source = source_path.read_text(encoding='utf-8')
 
+    # Preprocess
+    from opencuda.frontend.preprocess import preprocess
+    source = preprocess(source)
+
     # Parse C → IR
     from opencuda.frontend.parser import parse
     print(f"[opencuda] Parsing {args.source}...")
     module = parse(source)
     print(f"[opencuda] {len(module.kernels)} kernel(s) found")
+
+    # Optimize IR
+    from opencuda.ir.optimize import optimize
+    module = optimize(module, verbose=args.verbose)
 
     # IR → PTX
     from opencuda.codegen.emit import ir_to_ptx
