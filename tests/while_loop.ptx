@@ -1,0 +1,31 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry countdown(
+    .param .u64 out, .param .s32 n)
+{
+    .reg .b32 %r<7>;
+    .reg .b64 %rd<9>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.s32 %r1, [n];
+    add.s32 %r2, 0, 0;
+    bra while_cond_2;
+while_cond_2:
+    setp.gt.s32 %p0, %r1, 0;
+    @%p0 bra while_body_3;
+    bra while_exit_4;
+while_body_3:
+    add.s32 %r4, %r2, %r1;
+    sub.s32 %r5, %r1, 1;
+    bra while_cond_2;
+while_exit_4:
+    add.s32 %r6, 0, 0;
+    cvt.u64.u32 %rd8, %r6;
+    add.u64 %rd7, %rd0, %rd8;
+    st.global.s32 [%rd7], %r4;
+    ret;
+}

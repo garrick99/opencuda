@@ -1,0 +1,60 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry transpose(
+    .param .u64 out, .param .u64 in, .param .s32 N)
+{
+    .shared .f32 tile[256];
+    .reg .f32 %f<42>;
+    .reg .b32 %r<40>;
+    .reg .b64 %rd<46>;
+    .reg .pred %p<1>;
+
+    mov.u64 %rd3, tile;
+    mov.u64 %rd3, tile;
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [N];
+    mov.u32 %r5, %tid.x;
+    mov.u32 %r7, %tid.y;
+    mov.u32 %r9, %ctaid.x;
+    shl.b32 %r10, %r9, 4;
+    add.s32 %r11, %r5, %r10;
+    mov.u32 %r13, %ctaid.y;
+    shl.b32 %r14, %r13, 4;
+    add.s32 %r15, %r7, %r14;
+    shl.b32 %r16, %r7, 4;
+    add.s32 %r17, %r16, %r5;
+    shl.b32 %r18, %r17, 2;
+    cvt.u64.u32 %rd42, %r18;
+    add.u64 %rd19, %rd3, %rd42;
+    mul.lo.s32 %r20, %r15, %r2;
+    add.s32 %r21, %r20, %r11;
+    shl.b32 %r22, %r21, 2;
+    cvt.u64.u32 %rd43, %r22;
+    add.u64 %rd23, %rd1, %rd43;
+    ld.global.f32 %f24, [%rd23];
+    st.shared.f32 [%rd19], %f24;
+    bar.sync 0;
+    mov.u32 %r26, %ctaid.y;
+    shl.b32 %r27, %r26, 4;
+    add.s32 %r28, %r7, %r27;
+    mov.u32 %r30, %ctaid.x;
+    shl.b32 %r31, %r30, 4;
+    add.s32 %r32, %r5, %r31;
+    mul.lo.s32 %r33, %r32, %r2;
+    add.s32 %r34, %r33, %r28;
+    shl.b32 %r35, %r34, 2;
+    cvt.u64.u32 %rd44, %r35;
+    add.u64 %rd36, %rd0, %rd44;
+    shl.b32 %r37, %r5, 4;
+    add.s32 %r38, %r37, %r7;
+    shl.b32 %r39, %r38, 2;
+    cvt.u64.u32 %rd45, %r39;
+    add.u64 %rd40, %rd3, %rd45;
+    ld.shared.f32 %f41, [%rd40];
+    st.global.f32 [%rd36], %f41;
+    ret;
+}

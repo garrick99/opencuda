@@ -1,0 +1,48 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry bitops(
+    .param .u64 out, .param .u64 a, .param .u64 b, .param .s32 n)
+{
+    .reg .b32 %r<34>;
+    .reg .b64 %rd<37>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [a];
+    ld.param.u64 %rd2, [b];
+    ld.param.s32 %r3, [n];
+    mov.u32 %r5, %tid.x;
+    setp.lt.s32 %p0, %r5, %r3;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r8, %r5, 2;
+    cvt.u64.u32 %rd34, %r8;
+    add.u64 %rd9, %rd1, %rd34;
+    ld.global.u32 %r10, [%rd9];
+    cvt.u64.u32 %rd35, %r8;
+    add.u64 %rd13, %rd2, %rd35;
+    ld.global.u32 %r14, [%rd13];
+    and.b32 %r16, %r10, %r14;
+    or.b32 %r18, %r10, %r14;
+    xor.b32 %r20, %r10, %r14;
+    xor.b32 %r22, %r10, -1;
+    shl.b32 %r24, %r10, 4;
+    shr.b32 %r26, %r10, 8;
+    cvt.u64.u32 %rd36, %r8;
+    add.u64 %rd28, %rd0, %rd36;
+    add.u32 %r29, %r16, %r18;
+    add.u32 %r30, %r29, %r20;
+    add.u32 %r31, %r30, %r22;
+    add.u32 %r32, %r31, %r24;
+    add.u32 %r33, %r32, %r26;
+    st.global.u32 [%rd28], %r33;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

@@ -1,0 +1,35 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry apply_square(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<12>;
+    .reg .b32 %r<7>;
+    .reg .b64 %rd<14>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r4, %tid.x;
+    setp.lt.s32 %p0, %r4, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r6, %r4, 2;
+    cvt.u64.u32 %rd12, %r6;
+    add.u64 %rd7, %rd0, %rd12;
+    cvt.u64.u32 %rd13, %r6;
+    add.u64 %rd9, %rd1, %rd13;
+    ld.global.f32 %f10, [%rd9];
+    mul.f32 %f11, %f10, %f10;
+    st.global.f32 [%rd7], %f11;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

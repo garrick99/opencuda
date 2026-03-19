@@ -1,0 +1,38 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry mod_test(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .b32 %r<17>;
+    .reg .b64 %rd<19>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r4, %tid.x;
+    mov.u32 %r5, %ctaid.x;
+    mov.u32 %r6, %ntid.x;
+    mul.lo.s32 %r7, %r5, %r6;
+    add.s32 %r8, %r4, %r7;
+    setp.ge.s32 %p0, %r8, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    ret;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    shl.b32 %r11, %r8, 2;
+    cvt.u64.u32 %rd17, %r11;
+    add.u64 %rd12, %rd1, %rd17;
+    ld.global.s32 %r13, [%rd12];
+    cvt.u64.u32 %rd18, %r11;
+    add.u64 %rd15, %rd0, %rd18;
+    rem.s32 %r16, %r13, 7;
+    st.global.s32 [%rd15], %r16;
+    ret;
+}

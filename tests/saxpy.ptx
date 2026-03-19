@@ -1,0 +1,42 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry saxpy(
+    .param .u64 y, .param .u64 x, .param .f32 a, .param .s32 n)
+{
+    .reg .f32 %f<21>;
+    .reg .b32 %r<12>;
+    .reg .b64 %rd<23>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [y];
+    ld.param.u64 %rd1, [x];
+    ld.param.f32 %f2, [a];
+    ld.param.s32 %r3, [n];
+    mov.u32 %r5, %tid.x;
+    mov.u32 %r6, %ctaid.x;
+    mov.u32 %r7, %ntid.x;
+    mul.lo.s32 %r8, %r6, %r7;
+    add.s32 %r9, %r5, %r8;
+    setp.lt.s32 %p0, %r9, %r3;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r11, %r9, 2;
+    cvt.u64.u32 %rd21, %r11;
+    add.u64 %rd12, %rd0, %rd21;
+    cvt.u64.u32 %rd22, %r11;
+    add.u64 %rd14, %rd1, %rd22;
+    ld.global.f32 %f15, [%rd14];
+    mul.f32 %f16, %f2, %f15;
+    ld.global.f32 %f19, [%rd12];
+    add.f32 %f20, %f16, %f19;
+    st.global.f32 [%rd12], %f20;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

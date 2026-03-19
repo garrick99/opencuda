@@ -1,0 +1,28 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry mixed_math(
+    .param .u64 out, .param .u64 a, .param .u64 b)
+{
+    .reg .f32 %f<11>;
+    .reg .b32 %r<7>;
+    .reg .b64 %rd<15>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [a];
+    ld.param.u64 %rd2, [b];
+    mov.u32 %r4, %tid.x;
+    shl.b32 %r6, %r4, 2;
+    cvt.u64.u32 %rd13, %r6;
+    add.u64 %rd7, %rd1, %rd13;
+    ld.global.f32 %f8, [%rd7];
+    mul.f32 %f9, %f8, 0f40000000;
+    add.f32 %f10, %f9, 0f3F800000;
+    cvt.u64.u32 %rd14, %r6;
+    add.u64 %rd12, %rd0, %rd14;
+    st.global.f32 [%rd12], %f10;
+    ret;
+}

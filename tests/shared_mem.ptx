@@ -1,0 +1,32 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry smem_test(
+    .param .u64 out, .param .u64 in)
+{
+    .shared .f32 smem[256];
+    .reg .f32 %f<15>;
+    .reg .b32 %r<6>;
+    .reg .b64 %rd<18>;
+    .reg .pred %p<1>;
+
+    mov.u64 %rd2, smem;
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    mov.u32 %r4, %tid.x;
+    shl.b32 %r5, %r4, 2;
+    cvt.u64.u32 %rd15, %r5;
+    add.u64 %rd6, %rd2, %rd15;
+    cvt.u64.u32 %rd16, %r5;
+    add.u64 %rd8, %rd1, %rd16;
+    ld.global.f32 %f9, [%rd8];
+    st.shared.f32 [%rd6], %f9;
+    bar.sync 0;
+    cvt.u64.u32 %rd17, %r5;
+    add.u64 %rd11, %rd0, %rd17;
+    ld.shared.f32 %f14, [%rd6];
+    st.global.f32 [%rd11], %f14;
+    ret;
+}

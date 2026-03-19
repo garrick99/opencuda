@@ -1,0 +1,53 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry warp_reduce(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .b32 %r<22>;
+    .reg .b64 %rd<25>;
+    .reg .pred %p<2>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r4, %tid.x;
+    add.s32 %r5, 0, 0;
+    setp.lt.s32 %p0, %r4, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r7, %r4, 2;
+    cvt.u64.u32 %rd23, %r7;
+    add.u64 %rd8, %rd1, %rd23;
+    ld.global.s32 %r9, [%rd8];
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    shfl.sync.down.b32 %r10, %r9, 16, 31, 4294967295;
+    add.s32 %r11, %r9, %r10;
+    shfl.sync.down.b32 %r12, %r9, 8, 31, 4294967295;
+    add.s32 %r13, %r9, %r12;
+    shfl.sync.down.b32 %r14, %r9, 4, 31, 4294967295;
+    add.s32 %r15, %r9, %r14;
+    shfl.sync.down.b32 %r16, %r9, 2, 31, 4294967295;
+    add.s32 %r17, %r9, %r16;
+    shfl.sync.down.b32 %r18, %r9, 1, 31, 4294967295;
+    add.s32 %r19, %r9, %r18;
+    setp.lt.s32 %p1, %r4, 1;
+    @%p1 bra if_true_5;
+    bra if_false_6;
+if_true_5:
+    add.s32 %r21, 0, 0;
+    cvt.u64.u32 %rd24, %r21;
+    add.u64 %rd22, %rd0, %rd24;
+    st.global.s32 [%rd22], %r9;
+    bra if_merge_7;
+if_false_6:
+    bra if_merge_7;
+if_merge_7:
+    ret;
+}

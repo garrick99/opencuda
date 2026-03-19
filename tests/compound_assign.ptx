@@ -1,0 +1,42 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry compound_ops(
+    .param .u64 data, .param .s32 n)
+{
+    .reg .b32 %r<21>;
+    .reg .b64 %rd<24>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [data];
+    ld.param.s32 %r1, [n];
+    mov.u32 %r3, %tid.x;
+    mov.u32 %r4, %ctaid.x;
+    mov.u32 %r5, %ntid.x;
+    mul.lo.s32 %r6, %r4, %r5;
+    add.s32 %r7, %r3, %r6;
+    setp.ge.s32 %p0, %r7, %r1;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    ret;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    shl.b32 %r10, %r7, 2;
+    cvt.u64.u32 %rd23, %r10;
+    add.u64 %rd11, %rd0, %rd23;
+    ld.global.s32 %r12, [%rd11];
+    add.s32 %r13, %r12, 10;
+    sub.s32 %r14, %r12, 3;
+    shl.b32 %r15, %r12, 1;
+    and.b32 %r16, %r12, 255;
+    or.b32 %r17, %r12, 256;
+    xor.b32 %r18, %r12, 85;
+    shl.b32 %r19, %r12, 2;
+    shr.b32 %r20, %r12, 1;
+    st.global.s32 [%rd11], %r12;
+    ret;
+}

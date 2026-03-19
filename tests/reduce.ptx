@@ -5,11 +5,16 @@
 .visible .entry block_reduce(
     .param .u64 out, .param .u64 in, .param .s32 n)
 {
-    .reg .f32 %f<36>;
-    .reg .b32 %r<34>;
+    .shared .f32 smem[256];
+    .reg .f32 %f<37>;
+    .reg .b32 %r<35>;
     .reg .b64 %rd<43>;
     .reg .pred %p<4>;
 
+    mov.u64 %rd3, smem;
+    mov.u64 %rd3, smem;
+    mov.u64 %rd3, smem;
+    mov.u64 %rd3, smem;
 entry_1:
     ld.param.u64 %rd0, [out];
     ld.param.u64 %rd1, [in];
@@ -24,12 +29,12 @@ entry_1:
     @%p0 bra if_true_2;
     bra if_false_3;
 if_true_2:
-    mul.lo.s32 %r13, %r5, 4;
-    cvt.u64.u32 %rd36, %r13;
-    add.u64 %rd14, %rd3, %rd36;
-    mul.lo.s32 %r15, %r11, 4;
-    cvt.u64.u32 %rd37, %r15;
-    add.u64 %rd16, %rd1, %rd37;
+    shl.b32 %r13, %r5, 2;
+    cvt.u64.u32 %rd37, %r13;
+    add.u64 %rd14, %rd3, %rd37;
+    shl.b32 %r15, %r11, 2;
+    cvt.u64.u32 %rd38, %r15;
+    add.u64 %rd16, %rd1, %rd38;
     ld.global.f32 %f17, [%rd16];
     st.shared.f32 [%rd14], %f17;
     bra if_merge_4;
@@ -52,33 +57,34 @@ while_exit_7:
     @%p3 bra if_true_11;
     bra if_false_12;
 if_true_8:
-    mul.lo.s32 %r21, %r5, 4;
-    cvt.u64.u32 %rd38, %r21;
-    add.u64 %rd22, %rd3, %rd38;
+    shl.b32 %r21, %r5, 2;
+    cvt.u64.u32 %rd39, %r21;
+    add.u64 %rd22, %rd3, %rd39;
     add.s32 %r23, %r5, %r18;
-    mul.lo.s32 %r24, %r23, 4;
-    cvt.u64.u32 %rd39, %r24;
-    add.u64 %rd25, %rd3, %rd39;
+    shl.b32 %r24, %r23, 2;
+    cvt.u64.u32 %rd40, %r24;
+    add.u64 %rd25, %rd3, %rd40;
     ld.shared.f32 %f26, [%rd25];
-    cvt.u64.u32 %rd40, %f26;
-    add.u64 %rd27, %rd22, %rd40;
+    ld.shared.f32 %f27, [%rd22];
+    add.f32 %f28, %f27, %f26;
+    st.shared.f32 [%rd22], %f28;
     bra if_merge_10;
 if_false_9:
     bra if_merge_10;
 if_merge_10:
     bar.sync 0;
-    div.s32 %r28, %r18, 2;
+    div.s32 %r29, %r18, 2;
     bra while_cond_5;
 if_true_11:
-    mov.u32 %r30, %ctaid.x;
-    mul.lo.s32 %r31, %r30, 4;
-    cvt.u64.u32 %rd41, %r31;
-    add.u64 %rd32, %rd0, %rd41;
-    mul.lo.s32 %r33, 0, 4;
-    cvt.u64.u32 %rd42, %r33;
-    add.u64 %rd34, %rd3, %rd42;
-    ld.shared.f32 %f35, [%rd34];
-    st.global.f32 [%rd32], %f35;
+    mov.u32 %r31, %ctaid.x;
+    shl.b32 %r32, %r31, 2;
+    cvt.u64.u32 %rd41, %r32;
+    add.u64 %rd33, %rd0, %rd41;
+    add.s32 %r34, 0, 0;
+    cvt.u64.u32 %rd42, %r34;
+    add.u64 %rd35, %rd3, %rd42;
+    ld.shared.f32 %f36, [%rd35];
+    st.global.f32 [%rd33], %f36;
     bra if_merge_13;
 if_false_12:
     bra if_merge_13;

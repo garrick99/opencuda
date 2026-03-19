@@ -1,0 +1,38 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry const_math(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<15>;
+    .reg .b32 %r<9>;
+    .reg .b64 %rd<17>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    add.f32 %f3, 0f40490FD0, 0f00000000;
+    add.f32 %f4, 0f40000000, 0f00000000;
+    mov.u32 %r6, %tid.x;
+    setp.lt.s32 %p0, %r6, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r8, %r6, 2;
+    cvt.u64.u32 %rd15, %r8;
+    add.u64 %rd9, %rd0, %rd15;
+    cvt.u64.u32 %rd16, %r8;
+    add.u64 %rd11, %rd1, %rd16;
+    ld.global.f32 %f12, [%rd11];
+    mul.f32 %f13, %f12, %f3;
+    mul.f32 %f14, %f13, %f4;
+    st.global.f32 [%rd9], %f14;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

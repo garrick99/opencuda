@@ -1,0 +1,55 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry clamp_kernel(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<17>;
+    .reg .b32 %r<14>;
+    .reg .b64 %rd<19>;
+    .reg .pred %p<3>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r4, %tid.x;
+    setp.lt.s32 %p0, %r4, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r7, %r4, 2;
+    cvt.u64.u32 %rd17, %r7;
+    add.u64 %rd8, %rd1, %rd17;
+    ld.global.f32 %f9, [%rd8];
+    setp.lt.f32 %p1, %f9, 0f00000000;
+    @%p1 bra tern_true_5;
+    bra tern_false_6;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+tern_true_5:
+    add.f32 %f12, 0f00000000, 0f00000000;
+    bra tern_merge_7;
+tern_false_6:
+    add.f32 %f12, %f9, 0f00000000;
+    bra tern_merge_7;
+tern_merge_7:
+    shl.b32 %r13, %r4, 2;
+    cvt.u64.u32 %rd18, %r13;
+    add.u64 %rd14, %rd0, %rd18;
+    setp.gt.f32 %p2, %f12, 0f3F800000;
+    @%p2 bra tern_true_8;
+    bra tern_false_9;
+tern_true_8:
+    add.f32 %f16, 0f3F800000, 0f00000000;
+    bra tern_merge_10;
+tern_false_9:
+    add.f32 %f16, %f12, 0f00000000;
+    bra tern_merge_10;
+tern_merge_10:
+    st.global.f32 [%rd14], %f16;
+    bra if_merge_4;
+}

@@ -1,0 +1,38 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry scaled_copy(
+    .param .u64 out, .param .u64 in, .param .s32 n)
+{
+    .reg .f32 %f<15>;
+    .reg .b32 %r<10>;
+    .reg .b64 %rd<17>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [out];
+    ld.param.u64 %rd1, [in];
+    ld.param.s32 %r2, [n];
+    mov.u32 %r4, %tid.x;
+    mov.u32 %r5, %ctaid.x;
+    shl.b32 %r6, %r5, 8;
+    add.s32 %r7, %r4, %r6;
+    setp.lt.s32 %p0, %r7, %r2;
+    @%p0 bra if_true_2;
+    bra if_false_3;
+if_true_2:
+    shl.b32 %r9, %r7, 2;
+    cvt.u64.u32 %rd15, %r9;
+    add.u64 %rd10, %rd0, %rd15;
+    cvt.u64.u32 %rd16, %r9;
+    add.u64 %rd12, %rd1, %rd16;
+    ld.global.f32 %f13, [%rd12];
+    mul.f32 %f14, %f13, 0f40000000;
+    st.global.f32 [%rd10], %f14;
+    bra if_merge_4;
+if_false_3:
+    bra if_merge_4;
+if_merge_4:
+    ret;
+}

@@ -1,0 +1,36 @@
+.version 9.0
+.target sm_120
+.address_size 64
+
+.visible .entry count_down(
+    .param .u64 result, .param .s32 n)
+{
+    .reg .b32 %r<14>;
+    .reg .b64 %rd<16>;
+    .reg .pred %p<1>;
+
+entry_1:
+    ld.param.u64 %rd0, [result];
+    ld.param.s32 %r1, [n];
+    mov.u32 %r3, %tid.x;
+    mov.u32 %r4, %ctaid.x;
+    mov.u32 %r5, %ntid.x;
+    mul.lo.s32 %r6, %r4, %r5;
+    add.s32 %r7, %r3, %r6;
+    add.s32 %r8, 0, 0;
+    bra do_body_2;
+do_body_2:
+    add.s32 %r10, %r8, 1;
+    sub.s32 %r11, %r1, 1;
+    bra do_cond_3;
+do_cond_3:
+    setp.gt.s32 %p0, %r1, 0;
+    @%p0 bra do_body_2;
+    bra do_exit_4;
+do_exit_4:
+    shl.b32 %r13, %r7, 2;
+    cvt.u64.u32 %rd15, %r13;
+    add.u64 %rd14, %rd0, %rd15;
+    st.global.s32 [%rd14], %r10;
+    ret;
+}
