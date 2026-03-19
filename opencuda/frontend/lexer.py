@@ -64,9 +64,16 @@ class TokKind(Enum):
     AND      = auto()  # &&
     OR       = auto()  # ||
     ASSIGN   = auto()  # =
-    PLUS_EQ  = auto()
-    MINUS_EQ = auto()
-    STAR_EQ  = auto()
+    PLUS_EQ    = auto()
+    MINUS_EQ   = auto()
+    STAR_EQ    = auto()
+    SLASH_EQ   = auto()
+    PERCENT_EQ = auto()
+    AMP_EQ     = auto()
+    PIPE_EQ    = auto()
+    CARET_EQ   = auto()
+    LSHIFT_EQ  = auto()
+    RSHIFT_EQ  = auto()
 
     # Punctuation
     LPAREN   = auto()
@@ -136,6 +143,8 @@ _TOKEN_RE = re.compile(r"""
     (?P<HEX_LIT>        0[xX][0-9a-fA-F]+[uUlL]* ) |
     (?P<INT_LIT>        [0-9]+[uUlL]*       ) |
     (?P<IDENT>          [a-zA-Z_][a-zA-Z0-9_]* ) |
+    (?P<LSHIFT_EQ>      <<=                 ) |
+    (?P<RSHIFT_EQ>      >>=                 ) |
     (?P<LSHIFT>         <<                  ) |
     (?P<RSHIFT>         >>                  ) |
     (?P<PLUSPLUS>        \+\+               ) |
@@ -143,6 +152,11 @@ _TOKEN_RE = re.compile(r"""
     (?P<PLUS_EQ>        \+=                 ) |
     (?P<MINUS_EQ>       -=                  ) |
     (?P<STAR_EQ>        \*=                 ) |
+    (?P<SLASH_EQ>       /=                  ) |
+    (?P<PERCENT_EQ>     %=                  ) |
+    (?P<AMP_EQ>         &=                  ) |
+    (?P<PIPE_EQ>        \|=                 ) |
+    (?P<CARET_EQ>       \^=                 ) |
     (?P<EQ>             ==                  ) |
     (?P<NE>             !=                  ) |
     (?P<LE>             <=                  ) |
@@ -189,7 +203,11 @@ _GROUP_TO_KIND = {
     'AND': TokKind.AND, 'OR': TokKind.OR,
     'ASSIGN': TokKind.ASSIGN,
     'PLUS_EQ': TokKind.PLUS_EQ, 'MINUS_EQ': TokKind.MINUS_EQ,
-    'STAR_EQ': TokKind.STAR_EQ,
+    'STAR_EQ': TokKind.STAR_EQ, 'SLASH_EQ': TokKind.SLASH_EQ,
+    'PERCENT_EQ': TokKind.PERCENT_EQ,
+    'AMP_EQ': TokKind.AMP_EQ, 'PIPE_EQ': TokKind.PIPE_EQ,
+    'CARET_EQ': TokKind.CARET_EQ,
+    'LSHIFT_EQ': TokKind.LSHIFT_EQ, 'RSHIFT_EQ': TokKind.RSHIFT_EQ,
     'LPAREN': TokKind.LPAREN, 'RPAREN': TokKind.RPAREN,
     'LBRACE': TokKind.LBRACE, 'RBRACE': TokKind.RBRACE,
     'LBRACKET': TokKind.LBRACKET, 'RBRACKET': TokKind.RBRACKET,

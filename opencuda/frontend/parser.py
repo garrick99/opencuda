@@ -176,7 +176,14 @@ class Parser:
         # Compound assignment: +=, -=, *=
         for tok_kind, op in [(TokKind.PLUS_EQ, BinOp.ADD),
                              (TokKind.MINUS_EQ, BinOp.SUB),
-                             (TokKind.STAR_EQ, BinOp.MUL)]:
+                             (TokKind.STAR_EQ, BinOp.MUL),
+                             (TokKind.SLASH_EQ, BinOp.DIV),
+                             (TokKind.PERCENT_EQ, BinOp.MOD),
+                             (TokKind.AMP_EQ, BinOp.AND),
+                             (TokKind.PIPE_EQ, BinOp.OR),
+                             (TokKind.CARET_EQ, BinOp.XOR),
+                             (TokKind.LSHIFT_EQ, BinOp.SHL),
+                             (TokKind.RSHIFT_EQ, BinOp.SHR)]:
             if self._match(tok_kind):
                 rhs = self._parse_assign_expr()
                 if isinstance(lhs, Value):
@@ -310,6 +317,11 @@ class Parser:
                 rhs = self._parse_unary_expr()
                 dest = self._new_val("div", self._result_type(lhs, rhs))
                 self._emit(BinInst(dest, BinOp.DIV, lhs, rhs))
+                lhs = dest
+            elif self._match(TokKind.PERCENT):
+                rhs = self._parse_unary_expr()
+                dest = self._new_val("mod", self._result_type(lhs, rhs))
+                self._emit(BinInst(dest, BinOp.MOD, lhs, rhs))
                 lhs = dest
             else:
                 break
