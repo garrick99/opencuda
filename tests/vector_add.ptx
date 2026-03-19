@@ -24,7 +24,7 @@ entry_1:
     @%p0 bra if_true_2;
     bra if_false_3;
 if_true_2:
-    mul.lo.s32 %r11, %r9, 4;
+    shl.b32 %r11, %r9, 2;
     cvt.u64.u32 %rd20, %r11;
     add.u64 %rd12, %rd0, %rd20;
     cvt.u64.u32 %rd21, %r11;

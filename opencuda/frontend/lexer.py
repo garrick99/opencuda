@@ -37,6 +37,10 @@ class TokKind(Enum):
     KW_CONST    = auto()
     KW_BREAK    = auto()
     KW_CONTINUE = auto()
+    KW_DO       = auto()
+    KW_SWITCH   = auto()
+    KW_CASE     = auto()
+    KW_DEFAULT  = auto()
 
     # Operators
     PLUS     = auto()
@@ -117,6 +121,10 @@ _KEYWORDS = {
     'const': TokKind.KW_CONST,
     'break': TokKind.KW_BREAK,
     'continue': TokKind.KW_CONTINUE,
+    'do': TokKind.KW_DO,
+    'switch': TokKind.KW_SWITCH,
+    'case': TokKind.KW_CASE,
+    'default': TokKind.KW_DEFAULT,
 }
 
 _TOKEN_RE = re.compile(r"""

@@ -37,6 +37,8 @@ class Parser:
         self._block_count = 0
         self._struct_types: dict[str, StructTy] = {}  # struct name → StructTy
         self._typedefs: dict[str, Type] = {}  # typedef name → Type
+        self._break_targets: list[str] = []     # stack of break target labels
+        self._continue_targets: list[str] = []  # stack of continue target labels
 
     # -- Token helpers -------------------------------------------------------
 
@@ -657,10 +659,14 @@ class Parser:
             cond = self._parse_expr()
             cond_bb.terminator = CondBrTerm(cond, body_bb.label, exit_bb.label)
 
-            # Emit body
+            # Emit body (with break → exit_bb, continue → inc_bb)
             self._pos = body_resume
             self._cur_block = body_bb
+            self._break_targets.append(exit_bb.label)
+            self._continue_targets.append(inc_bb.label)
             self._parse_stmt_or_block()
+            self._break_targets.pop()
+            self._continue_targets.pop()
             if self._cur_block.terminator is None:
                 self._cur_block.terminator = BrTerm(inc_bb.label)
 
@@ -701,9 +707,127 @@ class Parser:
             cond_bb.terminator = CondBrTerm(cond, body_bb.label, exit_bb.label)
 
             self._cur_block = body_bb
+            self._break_targets.append(exit_bb.label)
+            self._continue_targets.append(cond_bb.label)
             self._parse_stmt_or_block()
+            self._break_targets.pop()
+            self._continue_targets.pop()
             if self._cur_block.terminator is None:
                 self._cur_block.terminator = BrTerm(cond_bb.label)
+
+            self._cur_block = exit_bb
+            return
+
+        # do/while loop
+        if tok.kind == TokKind.KW_DO:
+            self._advance()
+            body_bb = self._new_block("do_body")
+            cond_bb = self._new_block("do_cond")
+            exit_bb = self._new_block("do_exit")
+
+            self._cur_block.terminator = BrTerm(body_bb.label)
+            self._cur_block = body_bb
+            self._break_targets.append(exit_bb.label)
+            self._continue_targets.append(cond_bb.label)
+            self._parse_stmt_or_block()
+            self._break_targets.pop()
+            self._continue_targets.pop()
+            if self._cur_block.terminator is None:
+                self._cur_block.terminator = BrTerm(cond_bb.label)
+
+            self._cur_block = cond_bb
+            self._expect(TokKind.KW_WHILE)
+            self._expect(TokKind.LPAREN)
+            cond = self._parse_expr()
+            self._expect(TokKind.RPAREN)
+            self._expect(TokKind.SEMI)
+            cond_bb.terminator = CondBrTerm(cond, body_bb.label, exit_bb.label)
+
+            self._cur_block = exit_bb
+            return
+
+        # break
+        if tok.kind == TokKind.KW_BREAK:
+            self._advance()
+            self._expect(TokKind.SEMI)
+            if not self._break_targets:
+                raise ParseError("break outside of loop")
+            self._cur_block.terminator = BrTerm(self._break_targets[-1])
+            # Dead code after break — create a new unreachable block
+            self._cur_block = self._new_block("after_break")
+            return
+
+        # continue
+        if tok.kind == TokKind.KW_CONTINUE:
+            self._advance()
+            self._expect(TokKind.SEMI)
+            if not self._continue_targets:
+                raise ParseError("continue outside of loop")
+            self._cur_block.terminator = BrTerm(self._continue_targets[-1])
+            self._cur_block = self._new_block("after_continue")
+            return
+
+        # switch/case
+        if tok.kind == TokKind.KW_SWITCH:
+            self._advance()
+            self._expect(TokKind.LPAREN)
+            switch_val = self._parse_expr()
+            self._expect(TokKind.RPAREN)
+            self._expect(TokKind.LBRACE)
+
+            exit_bb = self._new_block("switch_exit")
+            self._break_targets.append(exit_bb.label)
+
+            # Collect cases
+            cases = []  # (value, block_label)
+            default_bb = None
+            while not self._match(TokKind.RBRACE):
+                if self._peek().kind == TokKind.KW_CASE:
+                    self._advance()
+                    case_val = self._parse_expr()
+                    self._expect(TokKind.COLON)
+                    case_bb = self._new_block("case")
+                    cases.append((case_val, case_bb))
+                    self._cur_block = case_bb
+                elif self._peek().kind == TokKind.KW_DEFAULT:
+                    self._advance()
+                    self._expect(TokKind.COLON)
+                    default_bb = self._new_block("default")
+                    self._cur_block = default_bb
+                else:
+                    self._parse_stmt()
+
+            self._break_targets.pop()
+
+            # Build comparison chain: if switch_val == case_val → branch to case_bb
+            chain_bb = self._kernel.blocks[-len(cases) - (1 if default_bb else 0) - 2]  # entry block before cases
+            # Actually, rebuild chain from the entry point
+            # Simple approach: emit a chain of if-else comparisons
+            entry_bb = self._new_block("switch_dispatch")
+            chain_bb.terminator = BrTerm(entry_bb.label) if chain_bb.terminator is None else chain_bb.terminator
+
+            cur = entry_bb
+            for case_val, case_bb in cases:
+                cmp = self._new_val("cmp", ScalarTy(ScalarType.BOOL))
+                self._cur_block = cur
+                self._emit(CmpInst(cmp, CmpOp.EQ, switch_val, case_val))
+                next_bb = self._new_block("switch_next")
+                cur.terminator = CondBrTerm(cmp, case_bb.label, next_bb.label)
+                cur = next_bb
+
+            # Default or exit
+            self._cur_block = cur
+            if default_bb:
+                cur.terminator = BrTerm(default_bb.label)
+            else:
+                cur.terminator = BrTerm(exit_bb.label)
+
+            # Ensure all case blocks fall through to exit if no terminator
+            for _, case_bb in cases:
+                if case_bb.terminator is None:
+                    case_bb.terminator = BrTerm(exit_bb.label)
+            if default_bb and default_bb.terminator is None:
+                default_bb.terminator = BrTerm(exit_bb.label)
 
             self._cur_block = exit_bb
             return

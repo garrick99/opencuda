@@ -36,6 +36,8 @@ def _ptx_reg_prefix(ty: Type) -> str:
     if isinstance(ty, PtrTy):
         return 'rd'
     if isinstance(ty, ScalarTy):
+        if ty.scalar == ScalarType.DOUBLE:
+            return 'fd'
         if ty.size == 8:
             return 'rd'
         if ty.is_float:
@@ -144,6 +146,8 @@ class PTXEmitter:
                 ptx.append(f'    .reg .b64 %{prefix}<{count}>;')
             elif prefix == 'f':
                 ptx.append(f'    .reg .f32 %{prefix}<{count}>;')
+            elif prefix == 'fd':
+                ptx.append(f'    .reg .f64 %{prefix}<{count}>;')
             else:
                 ptx.append(f'    .reg .b32 %{prefix}<{count}>;')
         pred_count = max(self._next_pred, 1)
@@ -217,9 +221,10 @@ class PTXEmitter:
                 self._lines.append(
                     f'    {ptx_op}.u64 {self._reg(inst.dest)}, {lhs}, {rhs};')
             elif _is_float(ty):
+                fty = _ptx_type(ty)  # f32 or f64
                 self._lines.append(
-                    f'    {ptx_op}.f32 {self._reg(inst.dest)}, '
-                    f'{self._operand(inst.lhs, "f32")}, {self._operand(inst.rhs, "f32")};')
+                    f'    {ptx_op}.{fty} {self._reg(inst.dest)}, '
+                    f'{self._operand(inst.lhs, fty)}, {self._operand(inst.rhs, fty)};')
             elif _is_64bit(ty):
                 self._lines.append(
                     f'    {ptx_op}.{ptx_ty} {self._reg(inst.dest)}, '
