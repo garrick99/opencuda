@@ -1,87 +1,84 @@
 # OpenCUDA
 
-Open-source CUDA compiler targeting NVIDIA Blackwell (SM_120 / RTX 5090).
+Open-source CUDA compiler. Compiles CUDA C directly to PTX assembly and executable GPU binaries — no NVIDIA software required.
 
-Compiles CUDA-subset C directly to PTX, with optional cubin generation via [OpenPTXas](https://github.com/garrick99/openptxas).
+Targets NVIDIA Blackwell (SM_120 / RTX 5090). Paired with [OpenPTXas](https://github.com/garrick99/openptxas) for the full pipeline: **CUDA C → PTX → cubin**.
 
-## Status
-
-**Working.** Compiles `vector_add` kernel from C source → PTX → cubin → correct results on RTX 5090 (256 elements verified).
-
-## Usage
+## What You Can Do
 
 ```bash
-# C → PTX
+# Compile a CUDA kernel to PTX
 python -m opencuda kernel.cu --emit-ptx
 
-# C → cubin (via OpenPTXas backend)
+# Compile to executable cubin (via OpenPTXas)
 python -m opencuda kernel.cu --out kernel.cubin
 
-# Verbose output
-python -m opencuda kernel.cu --emit-ptx -v
+# Run tests (66 tests, all passing)
+pytest opencuda/tests/test_compiler.py -v
 ```
 
-## Example
+The generated PTX passes NVIDIA's own ptxas validation. The generated cubins execute on RTX 5090 hardware.
 
-```c
-__global__ void vector_add(float *out, float *a, float *b, int n) {
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    if (i < n) {
-        out[i] = a[i] + b[i];
-    }
-}
-```
+## What's Supported
 
-```
-$ python -m opencuda vector_add.cu --emit-ptx -v
-[opencuda] Parsing vector_add.cu...
-[opencuda] 1 kernel(s) found
-[opencuda] Wrote PTX: vector_add.ptx
-```
+**33 test kernels compile through the full pipeline with zero errors:**
 
-## Supported C Features
-
-- `__global__` kernel functions
-- Types: `int`, `unsigned int`, `float`, `double`, `void`, pointers (`T*`)
-- Built-ins: `threadIdx.x/y/z`, `blockIdx.x/y/z`, `blockDim.x/y/z`, `__syncthreads()`
-- Control flow: `if`/`else`, `for` loops, `return`
-- Arithmetic: `+ - * / % & | ^ << >>`
-- Comparisons: `== != < <= > >=`
-- Array indexing: `ptr[i]` (read and write)
-- Pointer arithmetic
+| Feature | Status | Examples |
+|---|---|---|
+| **Arithmetic** | `+ - * / %` all operators | vector_add, saxpy, matmul |
+| **Bitwise** | `& \| ^ ~ << >>` | bitwise_test, histogram |
+| **Compound assignment** | `+= -= *= /= %= &= \|= ^= <<= >>=` | compound_assign |
+| **Control flow** | if/else, for, while, do/while | for_loop, while_loop, do_while |
+| **Switch/case** | switch/case/default with break | switch_test |
+| **Break/continue** | Loop exit and skip | break_continue |
+| **Ternary** | `cond ? a : b` | ternary_test |
+| **Types** | int, unsigned, float, double, pointers, structs | cast_test, type_promo, struct_test |
+| **Shared memory** | `__shared__` arrays with `__syncthreads()` | shared_mem, matmul_tiled, reduce |
+| **Atomics** | 9 atomic ops (add, sub, min, max, and, or, xor, exch, cas) | atomic_test |
+| **Warp shuffles** | `__shfl_sync`, `__shfl_down_sync`, `__ballot_sync`, etc. | warp_test |
+| **Device functions** | `__device__` with inlining and return values | device_func, device_return |
+| **Preprocessor** | `#define` text substitution | define_test |
+| **Multi-kernel** | Multiple `__global__` functions per file | multi_kernel |
+| **Optimization** | Constant folding, CSE, loop unrolling (≤16x) | for_loop |
 
 ## Architecture
 
 ```
-  CUDA-subset C source
-        |
-  [Lexer]  — tokenizes C
-        |
-  [Parser] — recursive descent, generates SSA IR
-        |
-  [IR]     — typed SSA basic blocks with control flow
-        |
-  [Codegen] — lowers IR to PTX text
-        |
-  [OpenPTXas] — assembles PTX to SM_120 cubin (optional)
-        |
-  [RTX 5090]
+CUDA C source (.cu)
+    ↓
+[Lexer]         Tokenize (regex-based, all C operators + CUDA keywords)
+    ↓
+[Preprocessor]  #define substitution
+    ↓
+[Parser]        Recursive descent → SSA IR (basic blocks + CFG)
+    ↓
+[Optimizer]     Constant folding, CSE, loop unrolling
+    ↓
+[Codegen]       PTX 9.0 text emission (sm_120, 64-bit addressing)
+    ↓
+[OpenPTXas]     PTX → cubin binary (optional)
+    ↓
+GPU execution   RTX 5090 verified ✓
 ```
 
-## Stack
-
-| Layer | Project | Role |
-|-------|---------|------|
-| Frontend | **OpenCUDA** | C → PTX |
-| Backend | [OpenPTXas](https://github.com/garrick99/openptxas) | PTX → cubin |
-| Hardware | RTX 5090 | SM_120 / Blackwell |
+Pure Python 3.11+. No dependencies beyond pytest for testing.
 
 ## Requirements
 
 - Python 3.11+
-- OpenPTXas (for cubin generation)
-- CUDA toolkit (only for GPU test harness compilation)
+- For cubin generation: [OpenPTXas](https://github.com/garrick99/openptxas)
+- For PTX validation: NVIDIA ptxas (optional, only for `test_ptxas_validates`)
+- For GPU execution: NVIDIA CUDA toolkit + RTX 5090/4090
+
+## Known Limitations
+
+- No `float16` SASS instructions (parsed, emits as f32)
+- Device function inlining doesn't support multiple return points inside if-blocks
+- Integer division/remainder emits PTX `div`/`rem` (requires ptxas or OpenPTXas for SASS expansion)
+- No texture/surface memory operations
+- No cooperative groups or tensor operations
+- Register allocation is naive (by value ID, no coloring or spilling)
 
 ## License
 
-Private. All rights reserved.
+See LICENSE file.
