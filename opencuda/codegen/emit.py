@@ -211,12 +211,19 @@ class PTXEmitter:
                 lhs = self._operand(inst.lhs)
                 rhs = self._operand(inst.rhs)
                 if isinstance(inst.rhs, (Value, Const)) and not _is_64bit(inst.rhs.ty if isinstance(inst.rhs, Value) else INT32):
-                    # Widen rhs to u64
-                    wide = kernel.new_value(f'wide{inst.dest.id}', ty)
-                    self._reg_counts[_ptx_reg_prefix(ty)] = max(
-                        self._reg_counts.get(_ptx_reg_prefix(ty), 0), wide.id + 1)
-                    self._lines.append(
-                        f'    cvt.u64.u32 {self._reg(wide)}, {rhs};')
+                    # Widen rhs to u64 — CSE: reuse if already widened
+                    rhs_id = inst.rhs.id if isinstance(inst.rhs, Value) else id(inst.rhs)
+                    if not hasattr(self, '_widen_cache'):
+                        self._widen_cache = {}
+                    if rhs_id in self._widen_cache:
+                        wide = self._widen_cache[rhs_id]
+                    else:
+                        wide = kernel.new_value(f'wide{inst.dest.id}', ty)
+                        self._reg_counts[_ptx_reg_prefix(ty)] = max(
+                            self._reg_counts.get(_ptx_reg_prefix(ty), 0), wide.id + 1)
+                        self._lines.append(
+                            f'    cvt.u64.u32 {self._reg(wide)}, {rhs};')
+                        self._widen_cache[rhs_id] = wide
                     rhs = self._reg(wide)
                 self._lines.append(
                     f'    {ptx_op}.u64 {self._reg(inst.dest)}, {lhs}, {rhs};')

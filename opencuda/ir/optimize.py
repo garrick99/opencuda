@@ -194,6 +194,19 @@ def cse(kernel: Kernel) -> int:
                 seen[key] = inst.dest
                 written_ids.add(inst.dest.id)
 
+            elif isinstance(inst, CvtInst):
+                # CSE for type conversions (e.g., cvt.u64.u32 of same source)
+                if isinstance(inst.src, Value) and inst.src.id in replacements:
+                    inst.src = replacements[inst.src.id]
+                if inst.dest.id not in written_ids:
+                    cvt_key = ('cvt', _key(inst.src), str(inst.dest.ty), str(inst.src.ty))
+                    if cvt_key in seen:
+                        replacements[inst.dest.id] = seen[cvt_key]
+                        eliminated += 1
+                        continue
+                    seen[cvt_key] = inst.dest
+                    written_ids.add(inst.dest.id)
+
             else:
                 # Apply replacements to other instruction types
                 if isinstance(inst, CmpInst):
