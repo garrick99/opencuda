@@ -7,7 +7,7 @@
 {
     .reg .f32 %f<20>;
     .reg .b32 %r<12>;
-    .reg .b64 %rd<23>;
+    .reg .b64 %rd<21>;
     .reg .pred %p<1>;
 
 entry_1:
@@ -27,11 +27,9 @@ if_true_2:
     shl.b32 %r11, %r9, 2;
     cvt.u64.u32 %rd20, %r11;
     add.u64 %rd12, %rd0, %rd20;
-    cvt.u64.u32 %rd21, %r11;
-    add.u64 %rd14, %rd1, %rd21;
+    add.u64 %rd14, %rd1, %rd20;
     ld.global.f32 %f15, [%rd14];
-    cvt.u64.u32 %rd22, %r11;
-    add.u64 %rd17, %rd2, %rd22;
+    add.u64 %rd17, %rd2, %rd20;
     ld.global.f32 %f18, [%rd17];
     add.f32 %f19, %f15, %f18;
     st.global.f32 [%rd12], %f19;

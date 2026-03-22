@@ -527,6 +527,13 @@ class Parser:
                     self._emit(CallInst(dest, name, args))
                     return dest
 
+            # Lazy param loading: emit ld.param on first use
+            if name in self._lazy_params and name not in self._variables:
+                idx, p = self._lazy_params[name]
+                val = self._new_val(p.name, p.ty)
+                self._emit(ParamInst(val, idx, p.name))
+                self._variables[p.name] = val
+
             # Variable reference
             if name in self._variables:
                 return self._variables[name]
@@ -954,6 +961,7 @@ class Parser:
         # Load kernel parameters into variables
         entry = self._new_block("entry")
         self._cur_block = entry
+        self._lazy_params = {}
         for i, p in enumerate(params):
             val = self._new_val(p.name, p.ty)
             self._emit(ParamInst(val, i, p.name))
